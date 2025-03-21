@@ -314,13 +314,31 @@ class AIGenerator:
             # Check if marketcap data is provided and add it to the prompt
             marketcap_data = kwargs.get('marketcap_data')
             if marketcap_data:
-                # Format marketcap for easier reading
-                if marketcap_data['value'] >= 1000000:
-                    formatted_mc = f"${marketcap_data['value']/1000000:.2f}M"
-                else:
-                    formatted_mc = f"${marketcap_data['value']:.2f}"
+                # Format marketcap data in a more comprehensive way
+                if 'formatted_value' in marketcap_data:
+                    # This is data from CryptoDataService with additional info
+                    ticker = marketcap_data['ticker']
+                    name = marketcap_data.get('name', '')
+                    marketcap_info = f"The current marketcap of {name} ({ticker}) is {marketcap_data['formatted_value']}."
                     
-                marketcap_info = f"The current marketcap of {marketcap_data['ticker']} is {formatted_mc}."
+                    # Add price data if available
+                    if 'price' in marketcap_data:
+                        price = f"${marketcap_data['price']:.2f}" if marketcap_data['price'] < 100 else f"${int(marketcap_data['price']):,}"
+                        marketcap_info += f" The current price is {price}."
+                    
+                    # Add 24h change if available
+                    if 'percent_change_24h' in marketcap_data:
+                        change = marketcap_data['percent_change_24h']
+                        direction = "up" if change >= 0 else "down"
+                        marketcap_info += f" It's {direction} {abs(change):.2f}% in the last 24 hours."
+                else:
+                    # This is the original format from wallet_manager
+                    formatted_mc = (
+                        f"${marketcap_data['value']/1000000000:.2f}B" if marketcap_data['value'] >= 1000000000
+                        else f"${marketcap_data['value']/1000000:.2f}M" if marketcap_data['value'] >= 1000000
+                        else f"${marketcap_data['value']:.2f}"
+                    )
+                    marketcap_info = f"The current marketcap of {marketcap_data['ticker']} is {formatted_mc}."
                 
                 # Add to user message for context but also create a special instruction
                 if kwargs.get('user_message'):

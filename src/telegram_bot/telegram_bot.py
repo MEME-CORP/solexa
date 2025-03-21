@@ -28,6 +28,7 @@ from src.ai_generator import AIGenerator
 from src.memory_processor import MemoryProcessor
 from src.memory_decision import select_relevant_memories
 from src.wallet_manager import WalletManager
+from src.services.crypto_data_service import CryptoDataService
 
 # Load environment variables
 load_dotenv()
@@ -51,6 +52,8 @@ class TelegramBot:
         self.application = None  # Initialize application as None
         # Initialize wallet manager
         self.wallet_manager = WalletManager()
+        # Initialize crypto data service
+        self.crypto_service = CryptoDataService()
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors caused by updates."""
@@ -189,25 +192,38 @@ class TelegramBot:
         self.add_to_conversation_history(user_id, user_message, is_bot=False)
 
         try:
-            # Check if message is asking about marketcap
-            is_marketcap_inquiry = self.is_marketcap_inquiry(user_message)
+            # Detect which type of market cap inquiry (if any)
+            crypto_inquiry = self.detect_crypto_inquiry(user_message)
             marketcap_data = None
             
-            # If it's a marketcap inquiry, fetch the data
-            if is_marketcap_inquiry:
-                try:
-                    logger.info(f"Marketcap inquiry detected: '{user_message}'")
-                    mint_address = Config.TOKEN_MINT_ADDRESS
-                    logger.info(f"Using mint address from config: {mint_address}")
-                    success, marketcap = await self.wallet_manager.get_token_marketcap(mint_address)
-                    logger.info(f"Marketcap request result: success={success}, value={marketcap}")
-                    if success and marketcap:
-                        marketcap_data = {"value": marketcap, "ticker": "$SOLEXA"}
-                        logger.info(f"Market cap data prepared: {marketcap_data}")
-                    else:
-                        logger.warning("Failed to get marketcap data")
-                except Exception as e:
-                    logger.error(f"Error fetching marketcap: {e}", exc_info=True)
+            if crypto_inquiry:
+                logger.info(f"Crypto inquiry detected: {crypto_inquiry} in message: '{user_message}'")
+                
+                # Handle custom token inquiry
+                if crypto_inquiry == "SOLEXA":
+                    try:
+                        mint_address = Config.TOKEN_MINT_ADDRESS
+                        logger.info(f"Using mint address from config: {mint_address}")
+                        success, marketcap = await self.wallet_manager.get_token_marketcap(mint_address)
+                        logger.info(f"Marketcap request result: success={success}, value={marketcap}")
+                        if success and marketcap:
+                            marketcap_data = {"value": marketcap, "ticker": "$SOLEXA"}
+                            logger.info(f"Market cap data prepared: {marketcap_data}")
+                        else:
+                            logger.warning("Failed to get custom token marketcap data")
+                    except Exception as e:
+                        logger.error(f"Error fetching custom token marketcap: {e}", exc_info=True)
+                
+                # Handle BTC or SOL inquiry
+                elif crypto_inquiry in ["BTC", "SOL"]:
+                    try:
+                        marketcap_data = await self.crypto_service.get_formatted_marketcap_data(crypto_inquiry)
+                        if marketcap_data:
+                            logger.info(f"Retrieved market cap data for {crypto_inquiry}: {marketcap_data['formatted_value']}")
+                        else:
+                            logger.warning(f"Failed to get marketcap data for {crypto_inquiry}")
+                    except Exception as e:
+                        logger.error(f"Error fetching {crypto_inquiry} marketcap: {e}", exc_info=True)
 
             # Generate AI response
             response = await self.generate_response(
@@ -299,15 +315,48 @@ class TelegramBot:
             logger.error(f"Error generating response: {e}")
             return "Sorry, I couldn't process your request at the moment."
 
-    def is_marketcap_inquiry(self, message):
+    def detect_crypto_inquiry(self, message):
         """
-        Check if the message is asking about marketcap.
+        Detect if the message is asking about cryptocurrency market caps.
+        
+        Returns:
+            str: Cryptocurrency symbol ("BTC", "SOL", "SOLEXA") or None if not a crypto inquiry
         """
         message = message.lower()
-        marketcap_phrases = [
+        
+        # Custom token detection (existing functionality)
+        solexa_phrases = [
             "marketcap", "market cap", "market value", "token value", 
             "how much is fwog worth", "what's the marketcap", "mc", 
             "what's fwog worth", "what is fwog worth"
         ]
         
-        return any(phrase in message for phrase in marketcap_phrases)
+        # Bitcoin detection
+        btc_phrases = [
+            "bitcoin", "btc", "bitcoin marketcap", "btc market cap",
+            "bitcoin price", "btc value", "btc worth", "bitcoin worth"
+        ]
+        
+        # Solana detection
+        sol_phrases = [
+            "solana", "sol", "solana marketcap", "sol market cap",
+            "solana price", "sol value", "sol worth", "solana worth"
+        ]
+        
+        # Check for explicit mentions of Bitcoin
+        for phrase in btc_phrases:
+            if phrase in message:
+                return "BTC"
+                
+        # Check for explicit mentions of Solana
+        for phrase in sol_phrases:
+            if phrase in message:
+                return "SOL"
+                
+        # If no specific crypto is mentioned but it's a marketcap inquiry,
+        # default to the custom token (existing behavior)
+        for phrase in solexa_phrases:
+            if phrase in message:
+                return "SOLEXA"
+                
+        return None
