@@ -27,16 +27,16 @@ class Config:
     )
 
     # Bot Configuration
-    BOT_USERNAME = os.getenv('BOT_USERNAME', 'papayaelbot')
+    BOT_USERNAME = os.getenv('BOT_USERNAME', 'solexaprobot')
     DISCORD_BOT_USERNAME = os.getenv('DISCORD_BOT_USERNAME', 'Fwog-AI')
 
     # Model Configuration 1
-    AI_MODEL = os.getenv('MODEL', 'hf:deepseek-ai/DeepSeek-V3')
+    AI_MODEL = os.getenv('MODEL', 'deepseek-ai/DeepSeek-R1')
     TEMPERATURE = float(os.getenv('TEMPERATURE', '0.7'))
     OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://glhf.chat/api/openai/v1')
 
     # Model Configuration 2
-    AI_MODEL2 = os.getenv('MODEL2', 'hf:meta-llama/Llama-3.3-70B-Instruct')
+    AI_MODEL2 = os.getenv('MODEL2',  'hf:meta-llama/Llama-3.3-70B-Instruct')
     TEMPERATURE = float(os.getenv('TEMPERATURE', '0.7'))
     OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://glhf.chat/api/openai/v1')
 

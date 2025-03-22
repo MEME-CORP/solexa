@@ -11,6 +11,12 @@ import time
 from telegram import Update
 from telegram.ext import Application
 from dotenv import load_dotenv
+try:
+    from flask import Flask
+    flask_available = True
+except ImportError:
+    flask_available = False
+    print("Warning: Flask is not installed. Web UI will not be available.")
 from src.ato_manager import ATOManager
 from functools import partial
 from src.announcement_broadcaster import AnnouncementBroadcaster
@@ -25,10 +31,11 @@ running = True
 twitter_thread = None
 telegram_thread = None
 discord_thread = None
+flask_thread = None
 
 def signal_handler(signum, frame):
     """Handle shutdown signals in main thread"""
-    global running, twitter_thread, telegram_thread, discord_thread
+    global running, twitter_thread, telegram_thread, discord_thread, flask_thread
     print(f"\nReceived signal {signum}. Starting graceful shutdown...")
     running = False
     
@@ -36,7 +43,8 @@ def signal_handler(signum, frame):
     threads_to_check = [
         (twitter_thread, "Twitter bot"),
         (telegram_thread, "Telegram bot"),
-        (discord_thread, "Discord bot")
+        (discord_thread, "Discord bot"),
+        (flask_thread, "Flask web application")
     ]
     
     for thread, name in threads_to_check:
@@ -137,6 +145,36 @@ def run_ato_manager():
     finally:
         loop.close()
 
+def run_flask_app():
+    """Run the Flask web application"""
+    global running
+    if not flask_available:
+        print("Cannot start Flask application: Flask is not installed.")
+        print("Install Flask with: pip install flask")
+        return
+        
+    try:
+        # Only import the frontend routes when we're actually going to use Flask
+        try:
+            from src.frontend.routes import init_app as init_frontend
+            app = Flask(__name__)
+            
+            # Initialize the frontend with the Flask app
+            init_frontend(app)
+            
+            # Run the Flask app
+            print("Starting Flask web application...")
+            app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        except ImportError as e:
+            print(f"Failed to import frontend routes: {e}")
+            print("Make sure Flask is installed: pip install flask")
+            return
+        
+    except Exception as e:
+        print(f"Error in Flask application: {e}")
+    finally:
+        print("Flask application has stopped.")
+
 def setup_paths():
     """Setup correct paths for loading config files"""
     # Add project root to Python path
@@ -152,14 +190,16 @@ def setup_paths():
 def main():
     setup_paths()
     
-    global twitter_thread, discord_thread, running
+    global twitter_thread, discord_thread, flask_thread, running
     parser = argparse.ArgumentParser()
     parser.add_argument('--bots', nargs='+', 
-                       choices=['twitter', 'telegram', 'discord', 'ato'], 
+                       choices=['twitter', 'telegram', 'discord', 'ato', 'web'], 
                        help='Specify which bots to run')
+    parser.add_argument('--web', action='store_true', 
+                        help='Start the web UI')
     args = parser.parse_args()
 
-    if not args.bots:
+    if not args.bots and not args.web:
         parser.print_help()
         return
 
@@ -183,8 +223,16 @@ def main():
             discord_thread.start()
             print("Discord bot thread started.")
 
+        # Start web UI if requested
+        if (args.web or 'web' in args.bots) and flask_available:
+            flask_thread = threading.Thread(target=run_flask_app, daemon=True)
+            flask_thread.start()
+            print("Web UI thread started.")
+        elif args.web or 'web' in args.bots:
+            print("Web UI requested but Flask is not installed. Install Flask with: pip install flask")
+
         # Start ATO manager thread if any bot is running
-        if any(bot in args.bots for bot in ['twitter', 'telegram', 'discord']):
+        if any(bot in args.bots for bot in ['twitter', 'telegram', 'discord', 'web']):
             ato_thread = threading.Thread(target=run_ato_manager, daemon=True)
             ato_thread.start()
             print("ATO Manager thread scheduled (5 minute delay)...")
@@ -214,6 +262,12 @@ def main():
             discord_thread.join(timeout=30)
             if discord_thread.is_alive():
                 print("Discord bot shutdown timed out!")
+
+        if flask_thread and flask_thread.is_alive():
+            print("Waiting for Web UI to shut down...")
+            flask_thread.join(timeout=30)
+            if flask_thread.is_alive():
+                print("Web UI shutdown timed out!")
 
         print("Main thread shutting down...")
         sys.exit(0)

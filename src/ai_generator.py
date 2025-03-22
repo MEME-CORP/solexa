@@ -52,7 +52,7 @@ class AIGenerator:
         )
         
         # Always use Gemma for direct user interactions
-        self.model = Config.AI_MODEL2  # This is gemma-2-9b-it
+        self.model = Config.AI_MODEL2  # Llama-3.3-70B-Instruct
 
         # Initialize memory decision
         self.memory_decision = MemoryDecision()
