@@ -36,7 +36,7 @@ class Config:
     OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://glhf.chat/api/openai/v1')
 
     # Model Configuration 2
-    AI_MODEL2 = os.getenv('MODEL2',  'hf:meta-llama/Llama-3.3-70B-Instruct')
+    AI_MODEL2 = os.getenv('MODEL2',  'reissbaker/llama-3.1-70b-abliterated-lora')
     TEMPERATURE = float(os.getenv('TEMPERATURE', '0.7'))
     OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://glhf.chat/api/openai/v1')
 
