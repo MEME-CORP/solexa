@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Social Media Post Writer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121218;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1e1e26;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.5rem;
+        }
+        .subtitle {
+            text-align: center;
+            color: #b4b4c7;
+            margin-top: -20px;
+            margin-bottom: 30px;
+        }
+        textarea {
+            width: 100%;
+            height: 120px;
+            background-color: #282836;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 15px;
+            resize: none;
+            font-size: 16px;
+        }
+        textarea:focus {
+            border-color: #9d4edd;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(157, 78, 221, 0.3);
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: opacity 0.2s;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .preview {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #282836;
+            border-radius: 8px;
+            white-space: pre-wrap;
+            min-height: 60px;
+            border: 1px solid #3a3a4a;
+        }
+        .platform-selector {
+            display: flex;
+            margin-bottom: 15px;
+            background-color: #282836;
+            border-radius: 25px;
+            padding: 3px;
+        }
+        .platform-button {
+            flex: 1;
+            padding: 12px 0;
+            text-align: center;
+            color: #8a8a9a;
+            cursor: pointer;
+            border-radius: 22px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .platform-button.active {
+            background-color: #9d4edd;
+            color: white;
+        }
+        .char-counter {
+            text-align: right;
+            margin-top: 5px;
+            font-size: 14px;
+            color: #8a8a9a;
+        }
+        .counter-limit {
+            color: #ff3b30;
+        }
+        .card {
+            background-color: #1e1e26;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            color: #b4b4c7;
+        }
+        .how-it-works {
+            margin-top: 40px;
+        }
+        .step {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        .step-number {
+            background-color: #9d4edd;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        .step-content {
+            flex: 1;
+        }
+        .step-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .step-desc {
+            color: #b4b4c7;
+            font-size: 0.9rem;
+        }
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            color: #8a8a9a;
+            font-size: 0.9rem;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .platform-specific-button {
+            display: none;
+        }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #333;
+            color: white;
+            padding: 15px 25px;
+            border-radius: 5px;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .toast.success {
+            background-color: #4CAF50;
+        }
+        .toast.error {
+            background-color: #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Solexa Style Transformer</h1>
+        <p class="subtitle">Write your post, let Solexa transform it into her style</p>
+        
+        <div class="card">
+            <div class="platform-selector">
+                <div class="platform-button active" id="twitter-btn">Twitter</div>
+                <div class="platform-button" id="telegram-btn">Telegram</div>
+            </div>
+            
+            <textarea id="message-input" placeholder="Write your message here..."></textarea>
+            <div class="char-counter" id="char-counter">0/280</div>
+            
+            <button id="generate-btn">Transform into Solexa's Style</button>
+        </div>
+        
+        <div class="preview" id="preview" style="display: none;"></div>
+        
+        <div class="action-buttons" id="action-buttons" style="display: none;">
+            <button id="post-telegram-btn" class="platform-specific-button telegram-button">Post to Telegram</button>
+            <button id="post-twitter-btn" class="platform-specific-button twitter-button">Post to Twitter</button>
+        </div>
+        
+        <div class="how-it-works">
+            <h2 class="section-title">How It Works</h2>
+            
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <div class="step-title">Select Your Platform</div>
+                    <div class="step-desc">Choose whether you're posting to Twitter or Telegram</div>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <div class="step-title">Write Your Message</div>
+                    <div class="step-desc">Enter the content you want transformed</div>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <div class="step-title">Get Solexa's Style</div>
+                    <div class="step-desc">AI transforms your message into Solexa's distinctive cyberpunk crypto diva style</div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            Solexa Labs &copy; 2025
+        </footer>
+    </div>
+    
+    <div id="toast" class="toast"></div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const twitterBtn = document.getElementById('twitter-btn');
+            const telegramBtn = document.getElementById('telegram-btn');
+            const messageInput = document.getElementById('message-input');
+            const charCounter = document.getElementById('char-counter');
+            const generateBtn = document.getElementById('generate-btn');
+            const preview = document.getElementById('preview');
+            const postTwitterBtn = document.getElementById('post-twitter-btn');
+            const postTelegramBtn = document.getElementById('post-telegram-btn');
+            const toast = document.getElementById('toast');
+            
+            let currentPlatform = 'twitter';
+            let twitterLimit = 280;
+            let telegramLimit = 4000;
+            
+            // Update character counter
+            function updateCounter() {
+                const count = messageInput.value.length;
+                const limit = currentPlatform === 'twitter' ? twitterLimit : telegramLimit;
+                
+                charCounter.textContent = `${count}/${limit}`;
+                
+                if (count > limit) {
+                    charCounter.classList.add('counter-limit');
+                    generateBtn.disabled = true;
+                } else {
+                    charCounter.classList.remove('counter-limit');
+                    generateBtn.disabled = false;
+                }
+            }
+            
+            // Show the appropriate action buttons based on platform
+            function updateActionButtons() {
+                const twitterButton = document.getElementById('post-twitter-btn');
+                const telegramButton = document.getElementById('post-telegram-btn');
+                
+                if (currentPlatform === 'twitter') {
+                    twitterButton.style.display = 'block';
+                    telegramButton.style.display = 'none';
+                } else {
+                    twitterButton.style.display = 'none';
+                    telegramButton.style.display = 'block';
+                }
+            }
+            
+            // Show toast notification
+            function showToast(message, type) {
+                toast.textContent = message;
+                toast.className = 'toast ' + (type || '');
+                toast.style.display = 'block';
+                
+                setTimeout(function() {
+                    toast.style.display = 'none';
+                }, 3000);
+            }
+            
+            // Platform selection
+            twitterBtn.addEventListener('click', function() {
+                twitterBtn.classList.add('active');
+                telegramBtn.classList.remove('active');
+                currentPlatform = 'twitter';
+                updateCounter();
+                updateActionButtons();
+            });
+            
+            telegramBtn.addEventListener('click', function() {
+                telegramBtn.classList.add('active');
+                twitterBtn.classList.remove('active');
+                currentPlatform = 'telegram';
+                updateCounter();
+                updateActionButtons();
+            });
+            
+            // Character count
+            messageInput.addEventListener('input', updateCounter);
+            
+            // Generate button
+            generateBtn.addEventListener('click', function() {
+                const message = messageInput.value.trim();
+                if (!message) {
+                    showToast('Please enter a message', 'error');
+                    return;
+                }
+                
+                generateBtn.textContent = 'Transforming...';
+                generateBtn.disabled = true;
+                
+                fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        platform: currentPlatform,
+                        request_type: 'transform'  // Always use transform for the web UI
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    preview.textContent = data.styled_content || 'No content generated';
+                    preview.style.display = 'block';
+                    document.getElementById('action-buttons').style.display = 'flex';
+                    generateBtn.textContent = 'Transform into Solexa\'s Style';
+                    generateBtn.disabled = false;
+                    
+                    // Update which buttons to show
+                    updateActionButtons();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    preview.textContent = 'Error transforming content. Please try again.';
+                    preview.style.display = 'block';
+                    generateBtn.textContent = 'Transform into Solexa\'s Style';
+                    generateBtn.disabled = false;
+                    showToast('Error transforming content', 'error');
+                });
+            });
+            
+            // Post to Twitter button
+            postTwitterBtn.addEventListener('click', function() {
+                const content = preview.textContent;
+                if (!content || content === 'No content generated' || content === 'Error transforming content. Please try again.') {
+                    showToast('No valid content to post', 'error');
+                    return;
+                }
+                
+                postTwitterBtn.textContent = 'Posting...';
+                postTwitterBtn.disabled = true;
+                
+                fetch('/api/post_to_twitter', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: content
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Message posted to Twitter successfully!', 'success');
+                    } else {
+                        showToast('Error posting to Twitter: ' + (data.error || 'Unknown error'), 'error');
+                    }
+                    postTwitterBtn.textContent = 'Post to Twitter';
+                    postTwitterBtn.disabled = false;
+                    
+                    // Clean up resources
+                    fetch('/api/cleanup_twitter', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    }).catch(err => console.error('Error cleaning up Twitter resources:', err));
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showToast('Error posting to Twitter. Please try again.', 'error');
+                    postTwitterBtn.textContent = 'Post to Twitter';
+                    postTwitterBtn.disabled = false;
+                });
+            });
+            
+            // Post to Telegram button
+            postTelegramBtn.addEventListener('click', function() {
+                const content = preview.textContent;
+                if (!content || content === 'No content generated' || content === 'Error transforming content. Please try again.') {
+                    alert('No valid content to post');
+                    return;
+                }
+                
+                const postBtn = document.getElementById('post-telegram-btn');
+                postBtn.textContent = 'Posting...';
+                postBtn.disabled = true;
+                
+                fetch('/api/post_to_telegram', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: content
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('Message posted to Telegram successfully!');
+                    } else {
+                        alert('Error posting to Telegram: ' + (data.error || 'Unknown error'));
+                    }
+                    postBtn.textContent = 'Post to Telegram';
+                    postBtn.disabled = false;
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error posting to Telegram. Please try again.');
+                    postBtn.textContent = 'Post to Telegram';
+                    postBtn.disabled = false;
+                });
+            });
+            
+            // Initialize
+            updateCounter();
+            updateActionButtons();
+        });
+    </script>
+</body>
+</html>

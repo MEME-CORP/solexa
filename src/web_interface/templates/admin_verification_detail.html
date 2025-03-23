@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Details - Solexa Bot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121218;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1e1e26;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.5rem;
+        }
+        .subtitle {
+            text-align: center;
+            color: #b4b4c7;
+            margin-top: -20px;
+            margin-bottom: 30px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #b4b4c7;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            color: white;
+        }
+        .card {
+            background-color: #282836;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #b4b4c7;
+        }
+        .verification-details {
+            margin-bottom: 20px;
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333341;
+        }
+        .detail-label {
+            color: #b4b4c7;
+        }
+        .detail-value {
+            font-weight: bold;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: #f14668;
+            color: white;
+            font-size: 0.8rem;
+        }
+        .status-badge.pending {
+            background-color: #ffdd57;
+            color: #333;
+        }
+        .status-badge.completed {
+            background-color: #48c774;
+        }
+        .screenshot-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .screenshot {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 2px solid #333341;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #b4b4c7;
+        }
+        input {
+            width: 100%;
+            background-color: #333341;
+            color: white;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 12px;
+            font-size: 16px;
+        }
+        input:focus {
+            border-color: #9d4edd;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(157, 78, 221, 0.3);
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: opacity 0.2s;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .flash-message {
+            padding: 10px;
+            background-color: #48c774;
+            color: white;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .flash-message.error {
+            background-color: #f14668;
+        }
+        .instructions {
+            background-color: #333341;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            color: #b4b4c7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="{{ url_for('admin_verification_list') }}" class="back-link">← Back to Verification List</a>
+        
+        <h1>Verification Details</h1>
+        <p class="subtitle">Submit Twitter verification code</p>
+        
+        {% if get_flashed_messages() %}
+        <div class="flash-message {% if 'rejected' in get_flashed_messages()[0] or 'error' in get_flashed_messages()[0] %}error{% endif %}">
+            {{ get_flashed_messages()[0] }}
+        </div>
+        {% endif %}
+        
+        <div class="card">
+            <h2 class="section-title">Verification Information</h2>
+            <div class="verification-details">
+                <div class="detail-row">
+                    <span class="detail-label">Verification ID</span>
+                    <span class="detail-value">{{ verification_id }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Timestamp</span>
+                    <span class="detail-value">{{ verification.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Status</span>
+                    <span class="detail-value">
+                        <span class="status-badge {{ verification.status }}">{{ verification.status }}</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2 class="section-title">Screenshot</h2>
+            <div class="instructions">
+                <p>The screenshot below shows the Twitter verification screen. Look for the verification code that was sent to the associated email or phone number.</p>
+            </div>
+            <div class="screenshot-container">
+                {% if screenshot_url %}
+                <img class="screenshot" src="{{ screenshot_url }}" alt="Verification Screenshot">
+                {% else %}
+                <p>No screenshot available</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if verification.status == 'pending' %}
+        <div class="card">
+            <h2 class="section-title">Submit Verification Code</h2>
+            <form method="post">
+                <div class="form-group">
+                    <label for="verification_code">Verification Code</label>
+                    <input type="text" id="verification_code" name="verification_code" required autofocus>
+                </div>
+                
+                <button type="submit">Submit Code</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    
+    {% if verification.status == 'pending' %}
+    <script>
+        // Auto-refresh the page every 60 seconds to check for status changes
+        setTimeout(function() {
+            window.location.reload();
+        }, 60000);
+    </script>
+    {% endif %}
+</body>
+</html> 

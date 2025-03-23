@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verification Requests - Solexa Bot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121218;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1e1e26;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.5rem;
+        }
+        .subtitle {
+            text-align: center;
+            color: #b4b4c7;
+            margin-top: -20px;
+            margin-bottom: 30px;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #b4b4c7;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            color: white;
+        }
+        .verification-list {
+            margin-top: 20px;
+        }
+        .verification-item {
+            background-color: #282836;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .verification-details {
+            flex: 1;
+        }
+        .verification-id {
+            font-weight: bold;
+            color: #b4b4c7;
+            font-size: 0.9rem;
+        }
+        .verification-time {
+            font-size: 0.9rem;
+            color: #8a8a9a;
+            margin-top: 5px;
+        }
+        .verification-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: #f14668;
+            color: white;
+            font-size: 0.8rem;
+        }
+        .verification-status.pending {
+            background-color: #ffdd57;
+            color: #333;
+        }
+        .verification-status.completed {
+            background-color: #48c774;
+        }
+        .view-btn {
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+        .view-btn:hover {
+            opacity: 0.9;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 30px;
+            color: #8a8a9a;
+        }
+        .flash-message {
+            padding: 10px;
+            background-color: #48c774;
+            color: white;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .flash-message.error {
+            background-color: #f14668;
+        }
+        .refresh-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            background-color: #333341;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 20px;
+            transition: background-color 0.2s;
+        }
+        .refresh-btn:hover {
+            background-color: #444455;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="{{ url_for('admin_dashboard') }}" class="back-link">← Back to Dashboard</a>
+        
+        <h1>Verification Requests</h1>
+        <p class="subtitle">Manage Twitter verification challenges</p>
+        
+        {% if get_flashed_messages() %}
+        <div class="flash-message">
+            {{ get_flashed_messages()[0] }}
+        </div>
+        {% endif %}
+        
+        <div class="verification-list" id="verification-list">
+            {% if verifications %}
+                {% for verification_id, verification in verifications.items() %}
+                <div class="verification-item">
+                    <div class="verification-details">
+                        <div class="verification-id">{{ verification_id }}</div>
+                        <div class="verification-time">{{ verification.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+                    </div>
+                    <div>
+                        <span class="verification-status {{ verification.status }}">{{ verification.status }}</span>
+                        <a href="{{ url_for('admin_verification_detail', verification_id=verification_id) }}">
+                            <button class="view-btn">Handle</button>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state">
+                    <p>No pending verification requests</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <button class="refresh-btn" onclick="window.location.reload()">Refresh List</button>
+    </div>
+    
+    <script>
+        // Auto-refresh the page every 30 seconds
+        setTimeout(function() {
+            window.location.reload();
+        }, 30000);
+    </script>
+</body>
+</html> 
