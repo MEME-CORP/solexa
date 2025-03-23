@@ -1,7 +1,8 @@
+// frontend/index.js
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import './index.css';
-import App from './frontend/src/App';
+import './src/index.css';
+import App from './src/App';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
