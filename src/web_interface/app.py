@@ -11,6 +11,9 @@ sys.path.append(str(project_root))
 
 from src.ai_generator import AIGenerator
 from src.config import Config
+# Import the necessary Twitter components
+from src.twitter_bot.scraper import Scraper
+from src.twitter_bot.tweets import TweetManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -19,6 +22,10 @@ logger = logging.getLogger('web_interface')
 app = Flask(__name__)
 generator = AIGenerator(mode='twitter')  # For Twitter styling
 telegram_generator = AIGenerator(mode='discord_telegram')  # For Telegram styling
+
+# Store Twitter browser instance to prevent multiple initializations
+twitter_scraper = None
+tweet_manager = None
 
 @app.route('/')
 def index():
@@ -139,6 +146,84 @@ def post_to_telegram():
             
     except Exception as e:
         logger.error(f"Error posting to Telegram: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/post_to_twitter', methods=['POST'])
+def post_to_twitter():
+    """Send a message to Twitter using the bot."""
+    global twitter_scraper, tweet_manager
+    
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+            
+        message = data.get('message', '')
+        if not message:
+            return jsonify({"success": False, "error": "No message provided"}), 400
+        
+        logger.info(f"Initializing Twitter components for posting...")
+        
+        # Initialize Twitter components if not already initialized
+        if twitter_scraper is None:
+            twitter_scraper = Scraper(proxy=os.getenv("PROXY_URL"))
+            initialization_success = twitter_scraper.initialize()
+            
+            if not initialization_success:
+                if twitter_scraper.is_verification_screen():
+                    logger.warning("Twitter verification required")
+                    verification_success = twitter_scraper.handle_verification_screen()
+                    if not verification_success:
+                        return jsonify({
+                            "success": False, 
+                            "error": "Twitter verification required. Please check email for verification code."
+                        }), 500
+                else:
+                    return jsonify({
+                        "success": False, 
+                        "error": "Failed to initialize Twitter components"
+                    }), 500
+            
+            # Initialize tweet manager
+            tweet_manager = TweetManager(twitter_scraper.driver)
+        
+        # Post tweet
+        logger.info(f"Posting message to Twitter: {message[:50]}...")
+        tweet_manager.send_tweet(message)
+        
+        logger.info("Message posted to Twitter successfully")
+        return jsonify({"success": True})
+        
+    except Exception as e:
+        logger.error(f"Error posting to Twitter: {e}", exc_info=True)
+        
+        # Cleanup on error
+        if twitter_scraper:
+            try:
+                twitter_scraper.close()
+                twitter_scraper = None
+                tweet_manager = None
+            except:
+                pass
+                
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/cleanup_twitter', methods=['POST'])
+def cleanup_twitter():
+    """Clean up Twitter resources when finished."""
+    global twitter_scraper, tweet_manager
+    
+    try:
+        if twitter_scraper:
+            logger.info("Cleaning up Twitter resources...")
+            twitter_scraper.close()
+            twitter_scraper = None
+            tweet_manager = None
+            return jsonify({"success": True})
+        else:
+            return jsonify({"success": True, "message": "No Twitter resources to clean up"})
+    except Exception as e:
+        logger.error(f"Error cleaning up Twitter resources: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
 def run_web_server(host='0.0.0.0', port=5000, debug=False):

@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('TwitterBot')
 
 class TwitterBot:
-    def __init__(self, handle_signals=False):
+    def __init__(self, handle_signals=False, initialize_now=True):
         logger.info("Initializing Twitter bot...")
         
         # Get the absolute path to the .env file
@@ -36,6 +36,10 @@ class TwitterBot:
         self.tweet_manager = None
         self.running = False
         self.is_cleaning_up = False
+        
+        # Only initialize if requested
+        if initialize_now:
+            self.initialize()
         
         logger.info("Twitter bot initialization complete!")
 
@@ -256,3 +260,10 @@ class TwitterBot:
         
         # Process any pending tweets
         await AnnouncementBroadcaster.process_pending_tweets()
+
+    def get_tweet_manager(self):
+        """Get the tweet manager, initializing if needed"""
+        if self.tweet_manager is None:
+            if not self.initialize():
+                raise Exception("Could not initialize Twitter bot components")
+        return self.tweet_manager
