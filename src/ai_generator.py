@@ -27,20 +27,20 @@ class AIGenerator:
         self.db = DatabaseService()
         self.memories = None
         
+        # Load formats for all modes (needed for transform_message)
+        self.length_formats = self.load_length_formats()
+        self.emotion_formats = self.load_emotion_formats()
+        
         # Mode-specific settings
         if mode == 'twitter':
             self.max_tokens = 70
             self.temperature = 0.0
-            self.length_formats = self.load_length_formats()
-            self.emotion_formats = self.load_emotion_formats()
         elif mode == 'discord':
             self.max_tokens = 40
             self.temperature = 0.9
-            self.emotion_formats = self.load_emotion_formats()
         else:  # telegram or other
             self.max_tokens = 70
             self.temperature = 0.9
-            self.emotion_formats = self.load_emotion_formats()
             
         # Load appropriate system prompt based on mode
         self.system_prompt = self._load_system_prompt()
