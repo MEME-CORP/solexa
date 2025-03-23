@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Solexa Bot</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121218;
+            color: white;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #1e1e26;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.5rem;
+        }
+        .subtitle {
+            text-align: center;
+            color: #b4b4c7;
+            margin-top: -20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background-color: #282836;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .section-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            background: linear-gradient(to right, #9d4edd, #ff5baa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .menu-item {
+            display: block;
+            padding: 12px;
+            background-color: #333341;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            transition: background-color 0.2s;
+        }
+        .menu-item:hover {
+            background-color: #444455;
+        }
+        .badge {
+            display: inline-block;
+            background-color: #f14668;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            margin-left: 10px;
+        }
+        .badge.green {
+            background-color: #48c774;
+        }
+        .status-section {
+            margin-top: 20px;
+        }
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #333341;
+        }
+        .status-label {
+            color: #b4b4c7;
+        }
+        .status-value {
+            font-weight: bold;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-online {
+            background-color: #48c774;
+        }
+        .status-offline {
+            background-color: #f14668;
+        }
+        .logout-btn {
+            display: block;
+            margin-top: 20px;
+            text-align: center;
+            color: #b4b4c7;
+            text-decoration: none;
+        }
+        .logout-btn:hover {
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Admin Dashboard</h1>
+        <p class="subtitle">Solexa Bot Management</p>
+        
+        <div class="card">
+            <h2 class="section-title">Verification Management</h2>
+            <a href="{{ url_for('admin_verification_list') }}" class="menu-item" id="verification-menu-item">
+                Twitter Verification Requests
+                <span class="badge" id="verification-badge" style="display: none;">0</span>
+            </a>
+        </div>
+        
+        <div class="card">
+            <h2 class="section-title">System Status</h2>
+            <div class="status-section">
+                <div class="status-row">
+                    <span class="status-label">Twitter Bot</span>
+                    <span class="status-value">
+                        <span class="status-indicator status-online" id="twitter-status"></span>
+                        <span id="twitter-status-text">Checking...</span>
+                    </span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Last Successful Tweet</span>
+                    <span class="status-value" id="last-tweet">Unknown</span>
+                </div>
+            </div>
+        </div>
+        
+        <a href="{{ url_for('admin_logout') }}" class="logout-btn">Logout</a>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check for pending verifications
+            function checkVerifications() {
+                fetch('/api/admin/verifications')
+                    .then(response => response.json())
+                    .then(data => {
+                        const count = Object.keys(data).length;
+                        const badge = document.getElementById('verification-badge');
+                        
+                        if (count > 0) {
+                            badge.textContent = count;
+                            badge.style.display = 'inline-block';
+                        } else {
+                            badge.style.display = 'none';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error checking verifications:', error);
+                    });
+            }
+            
+            // Check status periodically
+            checkVerifications();
+            setInterval(checkVerifications, 10000); // Check every 10 seconds
+        });
+    </script>
+</body>
+</html> 

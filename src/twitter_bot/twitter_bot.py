@@ -12,13 +12,14 @@ from src.ai_generator import AIGenerator
 from .scraper import Scraper
 from .tweets import TweetManager
 from src.announcement_broadcaster import AnnouncementBroadcaster
+from .twitter_service import twitter_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('TwitterBot')
 
 class TwitterBot:
-    def __init__(self, handle_signals=False):
+    def __init__(self, handle_signals=False, initialize_now=True):
         logger.info("Initializing Twitter bot...")
         
         # Get the absolute path to the .env file
@@ -32,10 +33,15 @@ class TwitterBot:
         # Initialize components
         self.generator = AIGenerator(mode='twitter')
         self.proxy = os.getenv("PROXY_URL")
-        self.scraper = None
-        self.tweet_manager = None
         self.running = False
         self.is_cleaning_up = False
+        
+        # Reference to the twitter service (not creating our own anymore)
+        self.service = twitter_service
+        
+        # Only initialize if requested
+        if initialize_now:
+            self.initialize()
         
         logger.info("Twitter bot initialization complete!")
 
@@ -46,45 +52,25 @@ class TwitterBot:
                 logger.error("AI Generator not initialized")
                 return False
 
-            if self.scraper is None:
-                self.scraper = Scraper(proxy=self.proxy)
-                initialization_success = self.scraper.initialize()
+            # Initialize the twitter service
+            if not self.service.is_initialized():
+                # For the main bot, use default port
+                os.environ.pop("REMOTE_DEBUGGING_PORT", None)  # Remove if set
                 
-                # Check if verification screen is detected
-                if not initialization_success and self.scraper and self.scraper.driver:
-                    if self.scraper.is_verification_screen():
-                        logger.warning("Verification required during initialization")
-                        verification_success = self.scraper.handle_verification_screen()
-                        
-                        if verification_success:
-                            # After verification, try to complete the login process
-                            # without reinitializing the driver
-                            if self.scraper.auth and self.scraper.auth.complete_login_after_verification():
-                                logger.info("Successfully logged in after verification")
-                                initialization_success = True
-                            else:
-                                logger.error("Failed to complete login after verification")
-                        else:
-                            logger.error("Verification failed or timed out")
+                # Initialize the service
+                initialization_success = self.service.initialize(proxy_url=self.proxy)
                 
                 if not initialization_success:
-                    logger.error("Failed to initialize scraper")
+                    logger.error("Failed to initialize Twitter service")
                     return False
-
-            if self.tweet_manager is None:
-                if not self.scraper or not self.scraper.driver:
-                    logger.error("Scraper or driver not properly initialized")
-                    return False
-                    
-                # Register driver with broadcaster before creating TweetManager
+            
+            # Set up broadcaster with the service's driver
+            if self.service.driver:
                 from src.announcement_broadcaster import AnnouncementBroadcaster
-                AnnouncementBroadcaster.set_twitter_driver(self.scraper.driver)
-                
-                # Initialize TweetManager which will process pending tweets
-                self.tweet_manager = TweetManager(self.scraper.driver)
+                AnnouncementBroadcaster.set_twitter_driver(self.service.driver)
                 
             # Verify all components
-            if not all([self.generator, self.scraper, self.tweet_manager]):
+            if not all([self.generator, self.service.is_initialized()]):
                 logger.error("Not all components initialized properly")
                 return False
                 
@@ -108,8 +94,8 @@ class TwitterBot:
             
             # Execute initial tasks
             logger.info("=== Initial Tasks ===")
-            if self.tweet_manager and self.generator:
-                self.tweet_manager.check_and_process_mentions(self.generator)
+            if self.service.get_tweet_manager() and self.generator:
+                self.service.get_tweet_manager().check_and_process_mentions(self.generator)
                 self.generate_and_send_tweet()
             
             # Set timers
@@ -123,7 +109,7 @@ class TwitterBot:
 
             while self.running:
                 try:
-                    if not all([self.generator, self.scraper, self.tweet_manager]):
+                    if not all([self.generator, self.service.is_initialized()]):
                         logger.error("Critical components lost during runtime")
                         if not self.initialize():  # Try to reinitialize
                             logger.error("Could not recover components")
@@ -138,18 +124,19 @@ class TwitterBot:
                     # Check notifications
                     if current_time - last_notification_check >= notification_interval:
                         logger.info("=== Checking Notifications ===")
-                        if self.tweet_manager and self.generator:
+                        tweet_manager = self.service.get_tweet_manager()
+                        if tweet_manager and self.generator:
                             try:
-                                self.tweet_manager.check_and_process_mentions(self.generator)
+                                tweet_manager.check_and_process_mentions(self.generator)
                             except Exception as e:
                                 logger.error(f"Error checking notifications: {e}")
                         last_notification_check = current_time
                         logger.info(f"Next notification check in {notification_interval/60:.1f} minutes")
 
                     # Check for verification screens periodically
-                    if self.scraper and self.scraper.is_verification_screen():
+                    if self.service.scraper and self.service.scraper.is_verification_screen():
                         logger.warning("Verification screen detected during operation")
-                        verification_success = self.scraper.handle_verification_screen()
+                        verification_success = self.service.scraper.handle_verification_screen()
                         
                         if verification_success:
                             logger.info("Verification completed, continuing normal operation")
@@ -185,15 +172,16 @@ class TwitterBot:
 
     def generate_and_send_tweet(self):
         """Generate and send a tweet"""
-        if not all([self.generator, self.tweet_manager]):
+        tweet_manager = self.service.get_tweet_manager()
+        if not all([self.generator, tweet_manager]):
             logger.error("Cannot generate and send tweet - missing components")
             return
 
         try:
             # Check for verification before attempting to tweet
-            if self.scraper and self.scraper.is_verification_screen():
+            if self.service.scraper and self.service.scraper.is_verification_screen():
                 logger.warning("Verification screen detected before tweeting")
-                verification_success = self.scraper.handle_verification_screen()
+                verification_success = self.service.scraper.handle_verification_screen()
                 
                 if not verification_success:
                     logger.warning("Tweet generation postponed due to verification issues")
@@ -210,10 +198,11 @@ class TwitterBot:
                 return
 
             # Sanitize content before sending
-            content = self.tweet_manager.sanitize_text(content)
+            content = tweet_manager.sanitize_text(content)
 
-            self.tweet_manager.send_tweet(content)
-            logger.info("Tweet posted successfully")
+            # Use the service to queue the tweet
+            self.service.send_tweet(content, priority=1, source="automated")
+            logger.info("Tweet queued successfully")
 
         except Exception as e:
             logger.error(f"Error generating/sending tweet: {e}")
@@ -235,24 +224,18 @@ class TwitterBot:
             logger.info("Starting cleanup process...")
             self.running = False
             
-            if self.scraper:
-                logger.info("Closing scraper...")
-                try:
-                    self.scraper.close()
-                except Exception as e:
-                    logger.error(f"Error closing scraper: {e}")
-                finally:
-                    self.scraper = None
+            # Service is now shared, so we don't close it here
+            # Just indicate that the bot is no longer using it
+            logger.info("TwitterBot no longer active, but service remains available")
             
             logger.info("Cleanup completed successfully")
             
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
-        finally:
-            os._exit(0)
 
-    async def _initialize_components(self):
-        # ... existing initialization code ...
-        
-        # Process any pending tweets
-        await AnnouncementBroadcaster.process_pending_tweets()
+    def get_tweet_manager(self):
+        """Get the tweet manager, initializing if needed"""
+        if not self.service.is_initialized():
+            if not self.initialize():
+                raise Exception("Could not initialize Twitter bot components")
+        return self.service.get_tweet_manager()

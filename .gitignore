@@ -44,7 +44,6 @@ twitter_session.json
 data/processed_tweets.txt
 tests/ 
 scripts0.2/
-templates/
 
 # Logs
 *.log
@@ -57,4 +56,5 @@ tests/__pycache__/
 .coverage
 htmlcov/
 .tox/
-tests/
+tests/+
+static/screenshots/

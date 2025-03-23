@@ -27,23 +27,26 @@ class AIGenerator:
         self.db = DatabaseService()
         self.memories = None
         
+        # Load formats for all modes (needed for transform_message)
+        self.length_formats = self.load_length_formats()
+        self.emotion_formats = self.load_emotion_formats()
+        
         # Mode-specific settings
         if mode == 'twitter':
             self.max_tokens = 70
             self.temperature = 0.0
-            self.length_formats = self.load_length_formats()
-            self.emotion_formats = self.load_emotion_formats()
         elif mode == 'discord':
             self.max_tokens = 40
             self.temperature = 0.9
-            self.emotion_formats = self.load_emotion_formats()
         else:  # telegram or other
             self.max_tokens = 70
             self.temperature = 0.9
-            self.emotion_formats = self.load_emotion_formats()
             
         # Load appropriate system prompt based on mode
         self.system_prompt = self._load_system_prompt()
+        
+        # Add transformation system prompt
+        self.transform_system_prompt = self._load_transform_system_prompt()
         
         # Initialize OpenAI client
         self.client = OpenAI(
@@ -442,4 +445,96 @@ class AIGenerator:
         except Exception as e:
             logger.error(f"Error getting memories synchronously: {e}")
             return []
+
+    def _load_transform_system_prompt(self):
+        """Load transformation system prompt"""
+        try:
+            # Load the transformation prompt from YAML file
+            prompt_file = 'transform_system_prompt.yaml'
+            
+            prompt_path = Path(__file__).parent / 'prompts_config' / prompt_file
+            
+            # Just log a warning if the file doesn't exist
+            if not prompt_path.exists():
+                logger.warning(f"Transform system prompt file not found: {prompt_file}")
+                return ""
+            
+            with open(prompt_path, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                if 'system_prompt' in config:
+                    logger.info(f"Successfully loaded transformation system prompt")
+                    return config['system_prompt']
+                logger.error(f"No system_prompt found in {prompt_file}")
+                return ""
+        except Exception as e:
+            logger.error(f"Error loading transformation system prompt: {e}")
+            return ""
+
+    def _prepare_transform_messages(self, **kwargs):
+        """Prepare messages for transformation API call"""
+        logger.info("Preparing message transformation with mode: %s", self.mode)
+        
+        # Use the same emotion and length formats for consistency
+        emotion_format = random.choice(self.emotion_formats)['format']
+        length_format = kwargs.get('length_format', random.choice(self.length_formats)['format'])
+        
+        # Format the transformation system prompt with the same variables
+        formatted_system_prompt = self.transform_system_prompt.format(
+            emotion_format=emotion_format,
+            length_format=length_format,
+            memory_context="transformation context",
+            phase_events="",
+            phase_dialogues=""
+        )
+        
+        # Create user prompt that clearly instructs transformation
+        user_message = kwargs.get('user_message', '')
+        user_prompt = f"Transform this message into your own words and style while maintaining the original meaning: {user_message}"
+        
+        messages = [
+            {"role": "system", "content": formatted_system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        
+        return messages
+
+    def transform_message(self, **kwargs):
+        """Transform user message into Solexa's style"""
+        try:
+            logger.info("Starting message transformation with mode: %s", self.mode)
+            
+            # Prepare messages for transformation
+            messages = self._prepare_transform_messages(**kwargs)
+            
+            # Log the messages being sent to the LLM
+            logger.info("Transformation messages being sent to LLM:")
+            for msg in messages:
+                logger.info("Role: %s", msg["role"])
+                logger.info("Content preview: %s", msg["content"][:200] + "..." if len(msg["content"]) > 200 else msg["content"])
+            
+            # Use the same model and parameters as generate_content
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+            
+            transformed_content = response.choices[0].message.content
+            
+            # Apply the same validation and character limits
+            if self.mode == 'twitter' and len(transformed_content) > 280:
+                logger.warning("Transformed content exceeds Twitter limit, truncating from %d characters", len(transformed_content))
+                transformed_content = transformed_content[:277] + "..."
+            
+            logger.info("Successfully transformed message:")
+            logger.info("- Content length: %d characters", len(transformed_content))
+            logger.info("- Transformed content: %s", transformed_content)
+            
+            return transformed_content
+            
+        except Exception as e:
+            logger.error(f"Error transforming message: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            raise
 

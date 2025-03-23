@@ -1,0 +1,324 @@
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session, flash, send_file
+import os
+import sys
+import logging
+from pathlib import Path
+import requests
+import functools
+import time
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# Add the project root to Python path to enable imports
+project_root = Path(__file__).parent.parent.parent
+sys.path.append(str(project_root))
+
+from src.ai_generator import AIGenerator
+from src.config import Config
+# Import the TwitterService instead of direct scraper and tweet manager imports
+from src.twitter_bot.twitter_service import twitter_service
+from src.verification_manager import VerificationManager
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('web_interface')
+
+app = Flask(__name__)
+generator = AIGenerator(mode='twitter')  # For Twitter styling
+telegram_generator = AIGenerator(mode='discord_telegram')  # For Telegram styling
+
+# Add admin configuration
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD_HASH = generate_password_hash(os.getenv("ADMIN_PASSWORD", "admin123"))
+
+# Decorator for admin-only routes
+def admin_required(f):
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('admin_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/')
+def index():
+    """Serve the main application page."""
+    return render_template('social_media_writer.html')
+
+@app.route('/api/generate', methods=['POST'])
+def generate_styled_content():
+    """Generate styled content for the selected platform."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
+        message = data.get('message', '')
+        platform = data.get('platform', 'twitter')
+        request_type = data.get('request_type', 'transform')  # Default to transform for the web UI
+        
+        if not message:
+            return jsonify({"error": "No message provided"}), 400
+            
+        logger.info(f"Processing {request_type} request for platform: {platform}")
+        
+        # Use the appropriate generator based on the platform and request type
+        if platform == 'twitter':
+            if request_type == 'transform':
+                content = generator.transform_message(user_message=message)
+            else:
+                content = generator.generate_content(
+                    user_message=message,
+                    conversation_context='',
+                    username='web_user'
+                )
+        else:  # telegram
+            if request_type == 'transform':
+                content = telegram_generator.transform_message(user_message=message)
+            else:
+                content = telegram_generator.generate_content(
+                    user_message=message,
+                    conversation_context='',
+                    username='web_user'
+                )
+            
+        logger.info(f"Generated/transformed content: {content[:100]}...")
+        
+        return jsonify({
+            "styled_content": content,
+            "platform": platform,
+            "request_type": request_type
+        })
+        
+    except Exception as e:
+        logger.error(f"Error processing request: {e}", exc_info=True)
+        return jsonify({"error": f"Error: {str(e)}"}), 500
+
+@app.route('/api/post_to_telegram', methods=['POST'])
+def post_to_telegram():
+    """Send a message to Telegram using the bot."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+            
+        message = data.get('message', '')
+        if not message:
+            return jsonify({"success": False, "error": "No message provided"}), 400
+        
+        # Get Telegram configuration
+        token = Config.TELEGRAM_BOT_TOKEN
+        chat_id = Config.TELEGRAM_CHAT_ID  # From .env
+        
+        if not token or not chat_id:
+            logger.error("Missing Telegram configuration (token or chat_id)")
+            return jsonify({"success": False, "error": "Missing Telegram configuration"}), 500
+        
+        # Send message to Telegram
+        logger.info(f"Sending message to Telegram chat {chat_id}")
+        
+        # Ensure chat_id is properly formatted (some chats require '@' prefix)
+        # Try to convert to integer first for user IDs
+        try:
+            chat_id_int = int(chat_id)
+            chat_id = chat_id_int
+        except ValueError:
+            # If not an integer, keep as string (might be a channel name)
+            pass
+            
+        telegram_api_url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"  # Add support for basic formatting
+        }
+        
+        # Add more debug info
+        logger.info(f"Sending to Telegram API: {telegram_api_url}")
+        logger.info(f"Using chat_id: {chat_id}, type: {type(chat_id)}")
+        
+        response = requests.post(telegram_api_url, json=payload)
+        response_json = response.json()
+        
+        if response.status_code == 200:
+            logger.info("Message sent to Telegram successfully")
+            return jsonify({"success": True})
+        else:
+            error_msg = response_json.get('description', response.text)
+            logger.error(f"Error sending message to Telegram: {error_msg}")
+            
+            # Provide more helpful error message
+            if "chat not found" in error_msg:
+                logger.error("The bot may not have been added to the chat or the chat ID is incorrect")
+                return jsonify({
+                    "success": False, 
+                    "error": f"Chat not found. Please ensure the bot has been added to chat ID {chat_id} and has permission to send messages."
+                }), 500
+            else:
+                return jsonify({"success": False, "error": error_msg}), 500
+            
+    except Exception as e:
+        logger.error(f"Error posting to Telegram: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/post_to_twitter', methods=['POST'])
+def post_to_twitter():
+    """Send a message to Twitter using the bot."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+            
+        message = data.get('message', '')
+        if not message:
+            return jsonify({"success": False, "error": "No message provided"}), 400
+        
+        logger.info(f"Initializing Twitter service for posting...")
+        
+        # Initialize the Twitter service if not already initialized
+        if not twitter_service.is_initialized():
+            # Use a different remote debugging port to avoid conflicts with the main Twitter bot
+            os.environ["REMOTE_DEBUGGING_PORT"] = "9223"  # Different from the default 9222
+            
+            initialization_success = twitter_service.initialize(proxy_url=os.getenv("PROXY_URL"))
+            
+            if not initialization_success:
+                # If the service has a scraper but initialization failed, check for verification
+                if twitter_service.scraper and twitter_service.scraper.is_verification_screen():
+                    logger.warning("Twitter verification required")
+                    verification_success = twitter_service.scraper.handle_verification_screen()
+                    if not verification_success:
+                        return jsonify({
+                            "success": False, 
+                            "error": "Twitter verification required. Please check email for verification code."
+                        }), 500
+                else:
+                    return jsonify({
+                        "success": False, 
+                        "error": "Failed to initialize Twitter service"
+                    }), 500
+        
+        # Post tweet with higher priority (0) and source as "web_interface"
+        success = twitter_service.send_tweet(message, priority=0, source="web_interface")
+        
+        if success:
+            logger.info("Message posted to Twitter successfully")
+            return jsonify({"success": True})
+        else:
+            logger.error("Failed to post message to Twitter")
+            return jsonify({"success": False, "error": "Failed to post message"}), 500
+        
+    except Exception as e:
+        logger.error(f"Error posting to Twitter: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/cleanup_twitter', methods=['POST'])
+def cleanup_twitter():
+    """Clean up Twitter resources when finished."""
+    try:
+        # We don't actually close the service anymore since it's shared
+        # Just acknowledge the request
+        return jsonify({"success": True, "message": "Twitter service maintained for future requests"})
+    except Exception as e:
+        logger.error(f"Error responding to cleanup request: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    """Admin login page"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username == ADMIN_USER and check_password_hash(ADMIN_PASSWORD_HASH, password):
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin_dashboard'))
+        else:
+            flash('Invalid username or password')
+    
+    return render_template('admin_login.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    """Admin logout"""
+    session.pop('admin_logged_in', None)
+    return redirect(url_for('admin_login'))
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard page"""
+    return render_template('admin_dashboard.html')
+
+@app.route('/admin/verification')
+@admin_required
+def admin_verification_list():
+    """List of pending verifications"""
+    pending_verifications = VerificationManager.list_pending_verifications()
+    return render_template('admin_verification_list.html', verifications=pending_verifications)
+
+@app.route('/admin/verification/<verification_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_verification_detail(verification_id):
+    """Verification detail page"""
+    verification = VerificationManager.get_verification(verification_id)
+    
+    if not verification:
+        flash('Verification not found')
+        return redirect(url_for('admin_verification_list'))
+    
+    if request.method == 'POST':
+        verification_code = request.form.get('verification_code')
+        
+        if not verification_code:
+            flash('Please enter a verification code')
+        else:
+            success = VerificationManager.submit_verification_code(verification_id, verification_code)
+            
+            if success:
+                flash('Verification code accepted')
+                return redirect(url_for('admin_verification_list'))
+            else:
+                flash('Verification code rejected or error occurred')
+    
+    # Generate paths for screenshot
+    screenshot_url = None
+    if verification.get('screenshot_path'):
+        screenshot_path = verification['screenshot_path']
+        screenshot_filename = os.path.basename(screenshot_path)
+        screenshot_url = url_for('static', filename=f'screenshots/{screenshot_filename}')
+    
+    return render_template('admin_verification_detail.html', 
+                          verification=verification,
+                          verification_id=verification_id,
+                          screenshot_url=screenshot_url)
+
+@app.route('/api/admin/verifications')
+@admin_required
+def api_verifications():
+    """API endpoint to get pending verifications"""
+    pending_verifications = VerificationManager.list_pending_verifications()
+    return jsonify(pending_verifications)
+
+@app.route('/api/admin/verification/<verification_id>', methods=['POST'])
+@admin_required
+def api_submit_verification(verification_id):
+    """API endpoint to submit verification code"""
+    data = request.json
+    if not data or 'code' not in data:
+        return jsonify({"success": False, "error": "No verification code provided"}), 400
+    
+    verification_code = data['code']
+    success = VerificationManager.submit_verification_code(verification_id, verification_code)
+    
+    return jsonify({"success": success})
+
+# Initialize the app
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "development_key")
+
+def run_web_server(host='0.0.0.0', port=5000, debug=False):
+    """Run the Flask web server."""
+    app.run(host=host, port=port, debug=debug)
+
+if __name__ == '__main__':
+    run_web_server(debug=True)

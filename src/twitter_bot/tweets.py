@@ -8,6 +8,7 @@ import os
 import logging
 from pathlib import Path
 from src.database.supabase_client import DatabaseService
+import re
 
 class TweetManager:
     def __init__(self, driver: WebDriver):
@@ -229,7 +230,14 @@ class TweetManager:
         success = False
         
         try:
+            # Sanitize content and remove self-mentions
             content = self.sanitize_text(content)
+            username = os.getenv("TWITTER_USERNAME", "agent47ai").lower()
+            
+            # Remove @username mentions from the reply content
+            content = re.sub(f"@{username}\\b", "", content, flags=re.IGNORECASE)
+            content = content.strip()
+            
             self.logger.info(f"Replying with content: {content}")
             
             for attempt in range(max_retries):
