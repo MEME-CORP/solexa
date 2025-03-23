@@ -1,5 +1,7 @@
 # main.py
-
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import sys
 import threading
 import argparse
@@ -21,6 +23,7 @@ from src.ato_manager import ATOManager
 from functools import partial
 from src.announcement_broadcaster import AnnouncementBroadcaster
 from datetime import datetime
+from frontend.routes import init_app as init_frontend
 
 # Add project root to Python path
 project_root = Path(__file__).parent
@@ -156,8 +159,89 @@ def run_flask_app():
     try:
         # Only import the frontend routes when we're actually going to use Flask
         try:
-            from src.frontend.routes import init_app as init_frontend
-            app = Flask(__name__)
+            from frontend.routes import init_app as init_frontend
+            
+            # Get absolute paths for directories
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            build_dir = os.path.abspath(os.path.join(current_dir, 'frontend', 'build'))
+            static_dir = os.path.abspath(os.path.join(build_dir, 'static'))
+            
+            # Very detailed logging for debugging
+            print("\n======== FLASK CONFIGURATION ========")
+            print(f"Current directory: {current_dir}")
+            print(f"Build directory: {build_dir}")
+            print(f"Static directory: {static_dir}")
+            print(f"Build dir exists: {os.path.exists(build_dir)}")
+            print(f"Static dir exists: {os.path.exists(static_dir)}")
+            
+            # List build directory contents
+            if os.path.exists(build_dir):
+                print("\nBuild directory contents:")
+                for item in os.listdir(build_dir):
+                    print(f"  {item}")
+            else:
+                # Create the build directory if it doesn't exist
+                os.makedirs(build_dir, exist_ok=True)
+                print(f"Created build directory at {build_dir}")
+            
+            # Create static directory if it doesn't exist
+            if not os.path.exists(static_dir):
+                os.makedirs(static_dir, exist_ok=True)
+                print(f"Created static directory at {static_dir}")
+                
+                # Create a test static file
+                with open(os.path.join(static_dir, 'test.js'), 'w') as f:
+                    f.write('console.log("Static file loaded successfully!");')
+                print("Created test.js static file")
+            
+            # Create a basic index.html if it doesn't exist
+            index_path = os.path.join(build_dir, 'index.html')
+            if not os.path.exists(index_path):
+                print(f"index.html not found, creating a basic one at {index_path}")
+                
+                # Create basic index.html with a script that tests static file loading
+                with open(index_path, 'w') as f:
+                    f.write('''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Test App</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            text-align: center;
+            margin-top: 50px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Test Page</h1>
+    <p>If you can see this, Flask is serving HTML correctly.</p>
+    
+    <!-- This will test if static files are being served -->
+    <script>
+        fetch('/static/test.js')
+            .then(response => {
+                if (response.ok) {
+                    document.body.innerHTML += '<p style="color:green">Static JS files work!</p>';
+                } else {
+                    document.body.innerHTML += '<p style="color:red">Static JS files not found (404)</p>';
+                }
+            })
+            .catch(error => {
+                document.body.innerHTML += '<p style="color:red">Error fetching static file: ' + error.message + '</p>';
+            });
+    </script>
+</body>
+</html>''')
+            
+            print("\n====================================")
+            
+            # Create Flask app with the correct configuration
+            app = Flask(__name__, 
+                        template_folder=build_dir,
+                        static_folder=static_dir,
+                        static_url_path='/static')
             
             # Initialize the frontend with the Flask app
             init_frontend(app)
@@ -165,6 +249,7 @@ def run_flask_app():
             # Run the Flask app
             print("Starting Flask web application...")
             app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+            
         except ImportError as e:
             print(f"Failed to import frontend routes: {e}")
             print("Make sure Flask is installed: pip install flask")
@@ -172,6 +257,8 @@ def run_flask_app():
         
     except Exception as e:
         print(f"Error in Flask application: {e}")
+        import traceback
+        print(traceback.format_exc())
     finally:
         print("Flask application has stopped.")
 
@@ -207,37 +294,37 @@ def main():
 
     try:
         # Start ATO manager if specifically requested
-        if 'ato' in args.bots and len(args.bots) == 1:
+        if args.bots and 'ato' in args.bots and len(args.bots) == 1:
             print("Starting ATO Manager only...")
             run_ato_manager()
             return
 
         # Start requested bots
-        if 'twitter' in args.bots:
+        if args.bots and 'twitter' in args.bots:
             twitter_thread = threading.Thread(target=run_twitter_bot, daemon=True)
             twitter_thread.start()
             print("Twitter bot thread started.")
 
-        if 'discord' in args.bots:
+        if args.bots and 'discord' in args.bots:
             discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
             discord_thread.start()
             print("Discord bot thread started.")
 
         # Start web UI if requested
-        if (args.web or 'web' in args.bots) and flask_available:
+        if (args.web or (args.bots and 'web' in args.bots)) and flask_available:
             flask_thread = threading.Thread(target=run_flask_app, daemon=True)
             flask_thread.start()
             print("Web UI thread started.")
-        elif args.web or 'web' in args.bots:
+        elif args.web or (args.bots and 'web' in args.bots):
             print("Web UI requested but Flask is not installed. Install Flask with: pip install flask")
 
         # Start ATO manager thread if any bot is running
-        if any(bot in args.bots for bot in ['twitter', 'telegram', 'discord', 'web']):
+        if args.bots and any(bot in args.bots for bot in ['twitter', 'telegram', 'discord', 'web']):
             ato_thread = threading.Thread(target=run_ato_manager, daemon=True)
             ato_thread.start()
             print("ATO Manager thread scheduled (5 minute delay)...")
 
-        if 'telegram' in args.bots:
+        if args.bots and 'telegram' in args.bots:
             # Run Telegram bot in main thread
             run_telegram_bot()
         else:

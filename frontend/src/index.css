@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-bg: #121218;
+  --secondary-bg: #1e1e26;
+  --tertiary-bg: #282836;
+  --primary-text: #ffffff;
+  --secondary-text: #b4b4c7;
+  --tertiary-text: #8a8a9a;
+  --accent-purple: #9d4edd;
+  --accent-pink: #ff5baa;
+  --accent-blue: #3db4f2;
+  --success: #4CD964;
+  --warning: #ffcc00;
+  --error: #ff3b30;
+  --gradient-purple-pink: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+  --gradient-blue-purple: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--primary-bg);
+  color: var(--primary-text);
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center py-3 px-6 rounded-full font-semibold cursor-pointer transition duration-200 border-none;
+  }
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-md;
+  }
+  
+  .btn-secondary {
+    @apply bg-gray-800 text-white;
+  }
+  
+  .btn-outlined {
+    @apply bg-transparent border-2 border-purple-600 text-purple-600;
+  }
+  
+  .form-label {
+    @apply block text-gray-400 mb-2;
+  }
+  
+  .form-input {
+    @apply w-full p-3 bg-gray-900 border border-gray-700 rounded-md text-white resize-none focus:border-purple-500 focus:outline-none focus:ring-2 focus:ring-purple-500/30 transition;
+  }
+  
+  .card {
+    @apply bg-gray-800 rounded-lg p-6 shadow-md mb-6;
+  }
+}

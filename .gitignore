@@ -37,6 +37,12 @@ env/
 *.swo
 .DS_Store
 
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
 # Project specific
 *.yaml
 !src/prompts_config/*.yaml
@@ -58,3 +64,4 @@ tests/__pycache__/
 htmlcov/
 .tox/
 tests/
+new_venv/
