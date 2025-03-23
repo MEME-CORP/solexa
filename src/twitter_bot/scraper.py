@@ -9,6 +9,8 @@ from .tweets import TweetManager
 import logging
 import time
 import os
+from pathlib import Path
+from datetime import datetime
 
 # Configure logging
 logger = logging.getLogger('Scraper')
@@ -27,6 +29,16 @@ class Scraper:
             try:
                 chrome_options = Options()
                 chrome_options.add_argument("--start-maximized")
+                
+                # Add remote debugging support
+                remote_debugging = os.getenv("ENABLE_REMOTE_DEBUGGING", "false").lower() == "true"
+                remote_debugging_port = os.getenv("REMOTE_DEBUGGING_PORT", "9222")
+                
+                if remote_debugging:
+                    chrome_options.add_argument(f"--remote-debugging-port={remote_debugging_port}")
+                    chrome_options.add_argument("--remote-debugging-address=0.0.0.0")
+                    logger.info(f"Remote debugging enabled on port {remote_debugging_port}")
+                
                 if self.proxy and self.proxy.strip() and self.proxy.lower() != "proxy_url_if_needed":
                     chrome_options.add_argument(f'--proxy-server={self.proxy}')
                 
@@ -160,25 +172,46 @@ class Scraper:
             
             logger.warning("VERIFICATION REQUIRED: Twitter is asking for a verification code")
             
-            # Removed screenshot capture - not necessary for the verification process
+            # Capture screenshot for remote verification
+            screenshot_path = self._capture_verification_screenshot()
+            
+            # Generate a unique verification session ID
+            verification_id = f"verify_{int(time.time())}"
+            
+            # Store verification status in global registry
+            from src.verification_manager import VerificationManager
+            VerificationManager.register_verification(
+                verification_id=verification_id,
+                screenshot_path=screenshot_path,
+                driver=self.driver
+            )
             
             # Broadcast notification if AnnouncementBroadcaster is available
             try:
                 from src.announcement_broadcaster import AnnouncementBroadcaster
+                verification_url = os.getenv("ADMIN_BASE_URL", "http://localhost:5000")
+                verification_url = f"{verification_url}/admin/verification/{verification_id}"
+                
                 AnnouncementBroadcaster.broadcast_urgent_message(
-                    "URGENT: Twitter verification code required. Please check email and enter code manually."
+                    f"URGENT: Twitter verification code required. Access verification panel at: {verification_url}"
                 )
             except Exception as e:
                 logger.error(f"Failed to broadcast notification: {e}")
             
-            # Wait for manual intervention with periodic checks
+            # Wait for code entry with periodic checks
             logger.warning(f"Waiting up to {timeout_minutes} minutes for verification code to be entered")
             max_attempts = timeout_minutes * 6  # Check every 10 seconds
             
             for attempt in range(max_attempts):
+                # Check if verification was completed via admin panel
+                if VerificationManager.is_verification_completed(verification_id):
+                    logger.info("Verification completed successfully via admin panel")
+                    return True
+                
                 # Check if verification screen is still present
                 if not self.is_verification_screen():
                     logger.info("Verification completed successfully")
+                    VerificationManager.complete_verification(verification_id)
                     return True
                 
                 # Every minute, remind about the verification
@@ -190,8 +223,104 @@ class Scraper:
                 time.sleep(10)
             
             logger.error(f"Verification timeout after {timeout_minutes} minutes")
+            VerificationManager.cancel_verification(verification_id)
             return False
             
         except Exception as e:
             logger.error(f"Error handling verification screen: {e}")
+            return False
+
+    def _capture_verification_screenshot(self):
+        """Capture a screenshot of the verification screen"""
+        try:
+            screenshots_dir = Path(__file__).parent.parent.parent / "static" / "screenshots"
+            screenshots_dir.mkdir(parents=True, exist_ok=True)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"verification_{timestamp}.png"
+            filepath = screenshots_dir / filename
+            
+            if self.driver.save_screenshot(str(filepath)):
+                logger.info(f"Screenshot saved to {filepath}")
+                return str(filepath)
+            else:
+                logger.error("Failed to save screenshot")
+                return None
+        except Exception as e:
+            logger.error(f"Error capturing screenshot: {e}")
+            return None
+
+    def submit_verification_code(self, code):
+        """Submit verification code programmatically"""
+        try:
+            if not code or not isinstance(code, str):
+                logger.error("Invalid verification code")
+                return False
+            
+            # Find and fill the verification code input field
+            input_field = None
+            
+            # Try different selectors for the input field
+            selectors = [
+                "input[name='text']", 
+                "input[placeholder*='code']",
+                "input[placeholder*='Code']"
+            ]
+            
+            for selector in selectors:
+                try:
+                    input_field = self.driver.find_element("css selector", selector)
+                    if input_field:
+                        break
+                except:
+                    continue
+                
+            if not input_field:
+                logger.error("Could not find verification code input field")
+                return False
+            
+            # Clear field and enter code
+            input_field.clear()
+            input_field.send_keys(code)
+            
+            # Find and click submit button
+            submit_button = None
+            
+            # Try different selectors for the submit button
+            button_selectors = [
+                "button[type='submit']",
+                "button:contains('Next')",
+                "button:contains('Verify')",
+                "button:contains('Submit')"
+            ]
+            
+            for selector in button_selectors:
+                try:
+                    submit_button = self.driver.find_element("css selector", selector)
+                    if submit_button:
+                        break
+                except:
+                    continue
+                
+            if not submit_button:
+                logger.error("Could not find submit button")
+                return False
+            
+            # Click the button
+            submit_button.click()
+            logger.info("Verification code submitted")
+            
+            # Wait a moment for the submission to process
+            time.sleep(3)
+            
+            # Check if verification screen is still present
+            if not self.is_verification_screen():
+                logger.info("Verification successful")
+                return True
+            else:
+                logger.error("Verification screen still present after code submission")
+                return False
+            
+        except Exception as e:
+            logger.error(f"Error submitting verification code: {e}")
             return False

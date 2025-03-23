@@ -1,9 +1,13 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, redirect, url_for, session, flash, send_file
 import os
 import sys
 import logging
 from pathlib import Path
 import requests
+import functools
+import time
+from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Add the project root to Python path to enable imports
 project_root = Path(__file__).parent.parent.parent
@@ -14,6 +18,8 @@ from src.config import Config
 # Import the necessary Twitter components
 from src.twitter_bot.scraper import Scraper
 from src.twitter_bot.tweets import TweetManager
+# Import the verification manager
+from src.verification_manager import VerificationManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +32,19 @@ telegram_generator = AIGenerator(mode='discord_telegram')  # For Telegram stylin
 # Store Twitter browser instance to prevent multiple initializations
 twitter_scraper = None
 tweet_manager = None
+
+# Add admin configuration
+ADMIN_USER = os.getenv("ADMIN_USER", "admin")
+ADMIN_PASSWORD_HASH = generate_password_hash(os.getenv("ADMIN_PASSWORD", "admin123"))
+
+# Decorator for admin-only routes
+def admin_required(f):
+    @functools.wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('admin_login'))
+        return f(*args, **kwargs)
+    return decorated_function
 
 @app.route('/')
 def index():
@@ -225,6 +244,99 @@ def cleanup_twitter():
     except Exception as e:
         logger.error(f"Error cleaning up Twitter resources: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    """Admin login page"""
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username == ADMIN_USER and check_password_hash(ADMIN_PASSWORD_HASH, password):
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin_dashboard'))
+        else:
+            flash('Invalid username or password')
+    
+    return render_template('admin_login.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    """Admin logout"""
+    session.pop('admin_logged_in', None)
+    return redirect(url_for('admin_login'))
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard page"""
+    return render_template('admin_dashboard.html')
+
+@app.route('/admin/verification')
+@admin_required
+def admin_verification_list():
+    """List of pending verifications"""
+    pending_verifications = VerificationManager.list_pending_verifications()
+    return render_template('admin_verification_list.html', verifications=pending_verifications)
+
+@app.route('/admin/verification/<verification_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_verification_detail(verification_id):
+    """Verification detail page"""
+    verification = VerificationManager.get_verification(verification_id)
+    
+    if not verification:
+        flash('Verification not found')
+        return redirect(url_for('admin_verification_list'))
+    
+    if request.method == 'POST':
+        verification_code = request.form.get('verification_code')
+        
+        if not verification_code:
+            flash('Please enter a verification code')
+        else:
+            success = VerificationManager.submit_verification_code(verification_id, verification_code)
+            
+            if success:
+                flash('Verification code accepted')
+                return redirect(url_for('admin_verification_list'))
+            else:
+                flash('Verification code rejected or error occurred')
+    
+    # Generate paths for screenshot
+    screenshot_url = None
+    if verification.get('screenshot_path'):
+        screenshot_path = verification['screenshot_path']
+        screenshot_filename = os.path.basename(screenshot_path)
+        screenshot_url = url_for('static', filename=f'screenshots/{screenshot_filename}')
+    
+    return render_template('admin_verification_detail.html', 
+                          verification=verification,
+                          verification_id=verification_id,
+                          screenshot_url=screenshot_url)
+
+@app.route('/api/admin/verifications')
+@admin_required
+def api_verifications():
+    """API endpoint to get pending verifications"""
+    pending_verifications = VerificationManager.list_pending_verifications()
+    return jsonify(pending_verifications)
+
+@app.route('/api/admin/verification/<verification_id>', methods=['POST'])
+@admin_required
+def api_submit_verification(verification_id):
+    """API endpoint to submit verification code"""
+    data = request.json
+    if not data or 'code' not in data:
+        return jsonify({"success": False, "error": "No verification code provided"}), 400
+    
+    verification_code = data['code']
+    success = VerificationManager.submit_verification_code(verification_id, verification_code)
+    
+    return jsonify({"success": success})
+
+# Initialize the app
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "development_key")
 
 def run_web_server(host='0.0.0.0', port=5000, debug=False):
     """Run the Flask web server."""
