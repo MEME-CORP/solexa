@@ -30,6 +30,13 @@ class Scraper:
                 chrome_options = Options()
                 chrome_options.add_argument("--start-maximized")
                 
+                # Add headless mode support
+                headless = os.getenv("HEADLESS_BROWSER", "false").lower() == "true"
+                if headless:
+                    chrome_options.add_argument("--headless")
+                    chrome_options.add_argument("--disable-gpu")  # Required for some systems with headless
+                    logger.info("Headless mode enabled")
+                
                 # Add remote debugging support
                 remote_debugging = os.getenv("ENABLE_REMOTE_DEBUGGING", "false").lower() == "true"
                 remote_debugging_port = os.getenv("REMOTE_DEBUGGING_PORT", "9222")
@@ -288,19 +295,34 @@ class Scraper:
             
             # Try different selectors for the submit button
             button_selectors = [
-                "button[type='submit']",
+                "button[data-testid='ocfEnterTextNextButton']",  # Add the specific data-testid
                 "button:contains('Next')",
                 "button:contains('Verify')",
-                "button:contains('Submit')"
+                "button:contains('Submit')",
+                "button:contains('Continue')",
+                "button:contains('Weiter')"  # German "Continue"
             ]
             
-            for selector in button_selectors:
-                try:
-                    submit_button = self.driver.find_element("css selector", selector)
-                    if submit_button:
-                        break
-                except:
-                    continue
+            # First try to find by data-testid which is most reliable
+            try:
+                submit_button = self.driver.find_element("css selector", "button[data-testid='ocfEnterTextNextButton']")
+            except:
+                # If that fails, try other methods
+                for selector in button_selectors:
+                    try:
+                        if selector.startswith("button:contains"):
+                            # For :contains selectors, we need to use a different approach
+                            text = selector.split("'")[1]
+                            elements = self.driver.find_elements("xpath", f"//button[contains(., '{text}')]")
+                            if elements:
+                                submit_button = elements[0]
+                                break
+                        else:
+                            submit_button = self.driver.find_element("css selector", selector)
+                            if submit_button:
+                                break
+                    except:
+                        continue
                 
             if not submit_button:
                 logger.error("Could not find submit button")

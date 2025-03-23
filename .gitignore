@@ -56,4 +56,5 @@ tests/__pycache__/
 .coverage
 htmlcov/
 .tox/
-tests/
+tests/+
+static/screenshots/
