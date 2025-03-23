@@ -34,36 +34,44 @@ def generate_styled_content():
             
         message = data.get('message', '')
         platform = data.get('platform', 'twitter')
+        request_type = data.get('request_type', 'transform')  # Default to transform for the web UI
         
         if not message:
             return jsonify({"error": "No message provided"}), 400
             
-        logger.info(f"Generating styled content for platform: {platform}")
+        logger.info(f"Processing {request_type} request for platform: {platform}")
         
-        # Use the appropriate generator based on the platform
+        # Use the appropriate generator based on the platform and request type
         if platform == 'twitter':
-            content = generator.generate_content(
-                user_message=message,
-                conversation_context='',
-                username='web_user'
-            )
+            if request_type == 'transform':
+                content = generator.transform_message(user_message=message)
+            else:
+                content = generator.generate_content(
+                    user_message=message,
+                    conversation_context='',
+                    username='web_user'
+                )
         else:  # telegram
-            content = telegram_generator.generate_content(
-                user_message=message,
-                conversation_context='',
-                username='web_user'
-            )
+            if request_type == 'transform':
+                content = telegram_generator.transform_message(user_message=message)
+            else:
+                content = telegram_generator.generate_content(
+                    user_message=message,
+                    conversation_context='',
+                    username='web_user'
+                )
             
-        logger.info(f"Generated content: {content[:100]}...")
+        logger.info(f"Generated/transformed content: {content[:100]}...")
         
         return jsonify({
             "styled_content": content,
-            "platform": platform
+            "platform": platform,
+            "request_type": request_type
         })
         
     except Exception as e:
-        logger.error(f"Error generating content: {e}", exc_info=True)
-        return jsonify({"error": f"Error generating content: {str(e)}"}), 500
+        logger.error(f"Error processing request: {e}", exc_info=True)
+        return jsonify({"error": f"Error: {str(e)}"}), 500
 
 def run_web_server(host='0.0.0.0', port=5000, debug=False):
     """Run the Flask web server."""
