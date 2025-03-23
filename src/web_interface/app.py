@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 from pathlib import Path
+import requests
 
 # Add the project root to Python path to enable imports
 project_root = Path(__file__).parent.parent.parent
@@ -72,6 +73,73 @@ def generate_styled_content():
     except Exception as e:
         logger.error(f"Error processing request: {e}", exc_info=True)
         return jsonify({"error": f"Error: {str(e)}"}), 500
+
+@app.route('/api/post_to_telegram', methods=['POST'])
+def post_to_telegram():
+    """Send a message to Telegram using the bot."""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({"success": False, "error": "No data provided"}), 400
+            
+        message = data.get('message', '')
+        if not message:
+            return jsonify({"success": False, "error": "No message provided"}), 400
+        
+        # Get Telegram configuration
+        token = Config.TELEGRAM_BOT_TOKEN
+        chat_id = Config.TELEGRAM_CHAT_ID  # From .env
+        
+        if not token or not chat_id:
+            logger.error("Missing Telegram configuration (token or chat_id)")
+            return jsonify({"success": False, "error": "Missing Telegram configuration"}), 500
+        
+        # Send message to Telegram
+        logger.info(f"Sending message to Telegram chat {chat_id}")
+        
+        # Ensure chat_id is properly formatted (some chats require '@' prefix)
+        # Try to convert to integer first for user IDs
+        try:
+            chat_id_int = int(chat_id)
+            chat_id = chat_id_int
+        except ValueError:
+            # If not an integer, keep as string (might be a channel name)
+            pass
+            
+        telegram_api_url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "HTML"  # Add support for basic formatting
+        }
+        
+        # Add more debug info
+        logger.info(f"Sending to Telegram API: {telegram_api_url}")
+        logger.info(f"Using chat_id: {chat_id}, type: {type(chat_id)}")
+        
+        response = requests.post(telegram_api_url, json=payload)
+        response_json = response.json()
+        
+        if response.status_code == 200:
+            logger.info("Message sent to Telegram successfully")
+            return jsonify({"success": True})
+        else:
+            error_msg = response_json.get('description', response.text)
+            logger.error(f"Error sending message to Telegram: {error_msg}")
+            
+            # Provide more helpful error message
+            if "chat not found" in error_msg:
+                logger.error("The bot may not have been added to the chat or the chat ID is incorrect")
+                return jsonify({
+                    "success": False, 
+                    "error": f"Chat not found. Please ensure the bot has been added to chat ID {chat_id} and has permission to send messages."
+                }), 500
+            else:
+                return jsonify({"success": False, "error": error_msg}), 500
+            
+    except Exception as e:
+        logger.error(f"Error posting to Telegram: {e}", exc_info=True)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 def run_web_server(host='0.0.0.0', port=5000, debug=False):
     """Run the Flask web server."""
