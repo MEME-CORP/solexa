@@ -15,10 +15,8 @@ sys.path.append(str(project_root))
 
 from src.ai_generator import AIGenerator
 from src.config import Config
-# Import the necessary Twitter components
-from src.twitter_bot.scraper import Scraper
-from src.twitter_bot.tweets import TweetManager
-# Import the verification manager
+# Import the TwitterService instead of direct scraper and tweet manager imports
+from src.twitter_bot.twitter_service import twitter_service
 from src.verification_manager import VerificationManager
 
 # Configure logging
@@ -28,10 +26,6 @@ logger = logging.getLogger('web_interface')
 app = Flask(__name__)
 generator = AIGenerator(mode='twitter')  # For Twitter styling
 telegram_generator = AIGenerator(mode='discord_telegram')  # For Telegram styling
-
-# Store Twitter browser instance to prevent multiple initializations
-twitter_scraper = None
-tweet_manager = None
 
 # Add admin configuration
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
@@ -170,8 +164,6 @@ def post_to_telegram():
 @app.route('/api/post_to_twitter', methods=['POST'])
 def post_to_twitter():
     """Send a message to Twitter using the bot."""
-    global twitter_scraper, tweet_manager
-    
     try:
         data = request.json
         if not data:
@@ -181,17 +173,20 @@ def post_to_twitter():
         if not message:
             return jsonify({"success": False, "error": "No message provided"}), 400
         
-        logger.info(f"Initializing Twitter components for posting...")
+        logger.info(f"Initializing Twitter service for posting...")
         
-        # Initialize Twitter components if not already initialized
-        if twitter_scraper is None:
-            twitter_scraper = Scraper(proxy=os.getenv("PROXY_URL"))
-            initialization_success = twitter_scraper.initialize()
+        # Initialize the Twitter service if not already initialized
+        if not twitter_service.is_initialized():
+            # Use a different remote debugging port to avoid conflicts with the main Twitter bot
+            os.environ["REMOTE_DEBUGGING_PORT"] = "9223"  # Different from the default 9222
+            
+            initialization_success = twitter_service.initialize(proxy_url=os.getenv("PROXY_URL"))
             
             if not initialization_success:
-                if twitter_scraper.is_verification_screen():
+                # If the service has a scraper but initialization failed, check for verification
+                if twitter_service.scraper and twitter_service.scraper.is_verification_screen():
                     logger.warning("Twitter verification required")
-                    verification_success = twitter_scraper.handle_verification_screen()
+                    verification_success = twitter_service.scraper.handle_verification_screen()
                     if not verification_success:
                         return jsonify({
                             "success": False, 
@@ -200,49 +195,32 @@ def post_to_twitter():
                 else:
                     return jsonify({
                         "success": False, 
-                        "error": "Failed to initialize Twitter components"
+                        "error": "Failed to initialize Twitter service"
                     }), 500
-            
-            # Initialize tweet manager
-            tweet_manager = TweetManager(twitter_scraper.driver)
         
-        # Post tweet
-        logger.info(f"Posting message to Twitter: {message[:50]}...")
-        tweet_manager.send_tweet(message)
+        # Post tweet with higher priority (0) and source as "web_interface"
+        success = twitter_service.send_tweet(message, priority=0, source="web_interface")
         
-        logger.info("Message posted to Twitter successfully")
-        return jsonify({"success": True})
+        if success:
+            logger.info("Message posted to Twitter successfully")
+            return jsonify({"success": True})
+        else:
+            logger.error("Failed to post message to Twitter")
+            return jsonify({"success": False, "error": "Failed to post message"}), 500
         
     except Exception as e:
         logger.error(f"Error posting to Twitter: {e}", exc_info=True)
-        
-        # Cleanup on error
-        if twitter_scraper:
-            try:
-                twitter_scraper.close()
-                twitter_scraper = None
-                tweet_manager = None
-            except:
-                pass
-                
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/cleanup_twitter', methods=['POST'])
 def cleanup_twitter():
     """Clean up Twitter resources when finished."""
-    global twitter_scraper, tweet_manager
-    
     try:
-        if twitter_scraper:
-            logger.info("Cleaning up Twitter resources...")
-            twitter_scraper.close()
-            twitter_scraper = None
-            tweet_manager = None
-            return jsonify({"success": True})
-        else:
-            return jsonify({"success": True, "message": "No Twitter resources to clean up"})
+        # We don't actually close the service anymore since it's shared
+        # Just acknowledge the request
+        return jsonify({"success": True, "message": "Twitter service maintained for future requests"})
     except Exception as e:
-        logger.error(f"Error cleaning up Twitter resources: {e}", exc_info=True)
+        logger.error(f"Error responding to cleanup request: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/admin/login', methods=['GET', 'POST'])

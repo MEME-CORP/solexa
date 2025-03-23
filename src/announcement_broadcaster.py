@@ -8,6 +8,7 @@ from src.config import Config
 from selenium.webdriver.common.by import By
 import time
 import re
+from src.twitter_bot.twitter_service import twitter_service
 
 logger = logging.getLogger('AnnouncementBroadcaster')
 
@@ -320,4 +321,16 @@ class AnnouncementBroadcaster:
             return False
         except Exception as e:
             logger.error(f"Critical error in telegram broadcast: {e}", exc_info=True)
+            return False
+
+    @classmethod
+    def broadcast_to_twitter(cls, message):
+        """Send an announcement to Twitter"""
+        if twitter_service.is_initialized():
+            twitter_service.send_tweet(message, priority=1, source="broadcaster")
+            cls.log_debug(f"Announcement sent to Twitter: {message[:30]}...")
+            return True
+        else:
+            cls._pending_tweets.append(message)
+            cls.log_debug(f"Twitter not available, queued announcement: {message[:30]}...")
             return False
