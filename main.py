@@ -25,10 +25,11 @@ running = True
 twitter_thread = None
 telegram_thread = None
 discord_thread = None
+web_thread = None
 
 def signal_handler(signum, frame):
     """Handle shutdown signals in main thread"""
-    global running, twitter_thread, telegram_thread, discord_thread
+    global running, twitter_thread, telegram_thread, discord_thread, web_thread
     print(f"\nReceived signal {signum}. Starting graceful shutdown...")
     running = False
     
@@ -36,7 +37,8 @@ def signal_handler(signum, frame):
     threads_to_check = [
         (twitter_thread, "Twitter bot"),
         (telegram_thread, "Telegram bot"),
-        (discord_thread, "Discord bot")
+        (discord_thread, "Discord bot"),
+        (web_thread, "Web interface")
     ]
     
     for thread, name in threads_to_check:
@@ -114,6 +116,20 @@ def run_discord_bot():
     finally:
         print("Discord bot has stopped.")
 
+def run_web_interface(host='0.0.0.0', port=5000, debug=False):
+    """Run the web interface"""
+    global running
+    try:
+        from src.web_interface.app import run_web_server
+        
+        print(f"Starting web interface on http://{host}:{port}...")
+        run_web_server(host=host, port=port, debug=debug)
+        
+    except Exception as e:
+        print(f"Error in web interface: {e}")
+    finally:
+        print("Web interface has stopped.")
+
 async def initialize_ato_manager():
     """Initialize ATO Manager after 5 minute delay"""
     try:
@@ -152,11 +168,17 @@ def setup_paths():
 def main():
     setup_paths()
     
-    global twitter_thread, discord_thread, running
+    global twitter_thread, discord_thread, web_thread, running
     parser = argparse.ArgumentParser()
     parser.add_argument('--bots', nargs='+', 
-                       choices=['twitter', 'telegram', 'discord', 'ato'], 
-                       help='Specify which bots to run')
+                      choices=['twitter', 'telegram', 'discord', 'ato', 'web'], 
+                      help='Specify which bots to run')
+    parser.add_argument('--web-port', type=int, default=5000,
+                      help='Port for the web interface')
+    parser.add_argument('--web-host', type=str, default='0.0.0.0',
+                      help='Host for the web interface')
+    parser.add_argument('--web-debug', action='store_true',
+                      help='Run web interface in debug mode')
     args = parser.parse_args()
 
     if not args.bots:
@@ -182,9 +204,18 @@ def main():
             discord_thread = threading.Thread(target=run_discord_bot, daemon=True)
             discord_thread.start()
             print("Discord bot thread started.")
+            
+        if 'web' in args.bots:
+            web_thread = threading.Thread(
+                target=run_web_interface,
+                args=(args.web_host, args.web_port, args.web_debug),
+                daemon=True
+            )
+            web_thread.start()
+            print(f"Web interface thread started on http://{args.web_host}:{args.web_port}")
 
         # Start ATO manager thread if any bot is running
-        if any(bot in args.bots for bot in ['twitter', 'telegram', 'discord']):
+        if any(bot in args.bots for bot in ['twitter', 'telegram', 'discord', 'web']):
             ato_thread = threading.Thread(target=run_ato_manager, daemon=True)
             ato_thread.start()
             print("ATO Manager thread scheduled (5 minute delay)...")
@@ -214,6 +245,12 @@ def main():
             discord_thread.join(timeout=30)
             if discord_thread.is_alive():
                 print("Discord bot shutdown timed out!")
+                
+        if web_thread and web_thread.is_alive():
+            print("Waiting for Web interface to shut down...")
+            web_thread.join(timeout=30)
+            if web_thread.is_alive():
+                print("Web interface shutdown timed out!")
 
         print("Main thread shutting down...")
         sys.exit(0)
