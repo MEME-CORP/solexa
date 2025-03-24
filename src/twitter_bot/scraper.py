@@ -30,12 +30,14 @@ class Scraper:
                 chrome_options = Options()
                 chrome_options.add_argument("--start-maximized")
                 
-                # Add headless mode support
-                headless = os.getenv("HEADLESS_BROWSER", "false").lower() == "true"
+                # Always enable headless mode in production environments
+                headless = os.getenv("HEADLESS_BROWSER", "true").lower() == "true"
                 if headless:
-                    chrome_options.add_argument("--headless")
-                    chrome_options.add_argument("--disable-gpu")  # Required for some systems with headless
-                    logger.info("Headless mode enabled")
+                    chrome_options.add_argument("--headless=new")  # Updated headless flag
+                    chrome_options.add_argument("--disable-gpu")
+                    chrome_options.add_argument("--no-sandbox")  # Required for running in containers
+                    chrome_options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource issues
+                    logger.info("Headless mode enabled with container settings")
                 
                 # Add remote debugging support
                 remote_debugging = os.getenv("ENABLE_REMOTE_DEBUGGING", "false").lower() == "true"
@@ -50,22 +52,34 @@ class Scraper:
                     chrome_options.add_argument(f'--proxy-server={self.proxy}')
                 
                 try:
-                    # Try to use webdriver_manager if available
+                    # For Render and other cloud environments, use chromedriver-autoinstaller
                     try:
-                        from webdriver_manager.chrome import ChromeDriverManager
-                        self.driver = webdriver.Chrome(
-                            service=ChromeService(ChromeDriverManager().install()), 
-                            options=chrome_options
-                        )
-                        logger.info("Successfully initialized Chrome using WebDriver Manager")
-                    except ImportError:
-                        logger.warning("webdriver_manager not found. Please install with: pip install webdriver-manager")
-                        logger.info("Falling back to default Chrome configuration")
-                        chrome_options.add_argument("--log-level=3")
+                        import chromedriver_autoinstaller
+                        chromedriver_autoinstaller.install()
+                        logger.info("Chrome driver installed automatically")
+                        
                         self.driver = webdriver.Chrome(options=chrome_options)
-                        logger.info("Successfully initialized Chrome using default configuration")
-                    return True
-                    
+                        logger.info("Successfully initialized Chrome driver")
+                        return True
+                        
+                    except ImportError:
+                        logger.warning("chromedriver_autoinstaller not found. Falling back to webdriver_manager")
+                        # Try to use webdriver_manager if available
+                        try:
+                            from webdriver_manager.chrome import ChromeDriverManager
+                            self.driver = webdriver.Chrome(
+                                service=ChromeService(ChromeDriverManager().install()), 
+                                options=chrome_options
+                            )
+                            logger.info("Successfully initialized Chrome using WebDriver Manager")
+                        except ImportError:
+                            logger.warning("webdriver_manager not found. Please install with: pip install webdriver-manager")
+                            logger.info("Falling back to default Chrome configuration")
+                            chrome_options.add_argument("--log-level=3")
+                            self.driver = webdriver.Chrome(options=chrome_options)
+                            logger.info("Successfully initialized Chrome using default configuration")
+                        return True
+                        
                 except Exception as e:
                     logger.error(f"Failed to initialize Chrome driver: {e}")
                     return False
