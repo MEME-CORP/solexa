@@ -452,40 +452,68 @@ class AIGenerator:
             # Load the transformation prompt from YAML file
             prompt_file = 'transform_system_prompt.yaml'
             
+            # Use absolute path to ensure file is found regardless of working directory
             prompt_path = Path(__file__).parent / 'prompts_config' / prompt_file
             
-            # Just log a warning if the file doesn't exist
+            logger.info(f"Attempting to load transform prompt from: {prompt_path}")
+            
+            # Check if file exists with more detailed logging
             if not prompt_path.exists():
-                logger.warning(f"Transform system prompt file not found: {prompt_file}")
-                return ""
+                logger.warning(f"Transform system prompt file not found at: {prompt_path}")
+                # Try alternate location as fallback (project root)
+                alt_path = Path(__file__).parent.parent / 'src' / 'prompts_config' / prompt_file
+                if alt_path.exists():
+                    prompt_path = alt_path
+                    logger.info(f"Found transform prompt at alternate location: {alt_path}")
+                else:
+                    logger.error(f"Transform system prompt not found at alternate location either: {alt_path}")
+                    return ""
             
             with open(prompt_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
                 if 'system_prompt' in config:
-                    logger.info(f"Successfully loaded transformation system prompt")
-                    return config['system_prompt']
+                    prompt_content = config['system_prompt']
+                    # Log first 100 chars to verify content
+                    logger.info(f"Successfully loaded transformation system prompt: {prompt_content[:100]}...")
+                    return prompt_content
                 logger.error(f"No system_prompt found in {prompt_file}")
                 return ""
         except Exception as e:
             logger.error(f"Error loading transformation system prompt: {e}")
+            logger.error(traceback.format_exc())
             return ""
 
     def _prepare_transform_messages(self, **kwargs):
         """Prepare messages for transformation API call"""
         logger.info("Preparing message transformation with mode: %s", self.mode)
         
+        # Check if transform system prompt is loaded
+        if not self.transform_system_prompt:
+            logger.warning("Transform system prompt is empty, attempting to reload")
+            self.transform_system_prompt = self._load_transform_system_prompt()
+            
+            # If still empty after reload attempt, use a simplified default prompt
+            if not self.transform_system_prompt:
+                logger.warning("Using default transform prompt as fallback")
+                self.transform_system_prompt = "You are Solexa, a crypto expert. Transform the user's message into your distinctive style while preserving the original meaning. Use a casual, crypto-savvy tone with British slang."
+        
         # Use the same emotion and length formats for consistency
         emotion_format = random.choice(self.emotion_formats)['format']
         length_format = kwargs.get('length_format', random.choice(self.length_formats)['format'])
         
         # Format the transformation system prompt with the same variables
-        formatted_system_prompt = self.transform_system_prompt.format(
-            emotion_format=emotion_format,
-            length_format=length_format,
-            memory_context="transformation context",
-            phase_events="",
-            phase_dialogues=""
-        )
+        try:
+            formatted_system_prompt = self.transform_system_prompt.format(
+                emotion_format=emotion_format,
+                length_format=length_format,
+                memory_context="transformation context",
+                phase_events="",
+                phase_dialogues=""
+            )
+            logger.info(f"Formatted system prompt length: {len(formatted_system_prompt)}")
+        except Exception as e:
+            logger.error(f"Error formatting transform system prompt: {e}")
+            formatted_system_prompt = self.transform_system_prompt  # Use unformatted as fallback
         
         # Create user prompt that clearly instructs transformation
         user_message = kwargs.get('user_message', '')
@@ -496,12 +524,27 @@ class AIGenerator:
             {"role": "user", "content": user_prompt}
         ]
         
+        # Log the first part of the system prompt to verify it's being sent
+        logger.info(f"System prompt preview: {formatted_system_prompt[:150]}...")
+        
         return messages
 
     def transform_message(self, **kwargs):
         """Transform user message into Solexa's style"""
         try:
             logger.info("Starting message transformation with mode: %s", self.mode)
+            
+            # Ensure memories are loaded for context
+            if not self.memories:
+                logger.info("No memories loaded, fetching memories for context")
+                self.memories = self.get_memories_sync()
+            
+            # Add memory context to kwargs if user didn't provide specific memories
+            if 'memories' not in kwargs and self.memories:
+                # Pick a few random memories for context variety
+                random_memories = random.sample(self.memories, min(3, len(self.memories)))
+                kwargs['memories'] = random_memories
+                logger.info(f"Added {len(random_memories)} random memories for context")
             
             # Prepare messages for transformation
             messages = self._prepare_transform_messages(**kwargs)
