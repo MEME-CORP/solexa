@@ -281,17 +281,9 @@ def admin_verification_detail(verification_id):
             else:
                 flash('Verification code rejected or error occurred')
     
-    # Generate paths for screenshot
-    screenshot_url = None
-    if verification.get('screenshot_path'):
-        screenshot_path = verification['screenshot_path']
-        screenshot_filename = os.path.basename(screenshot_path)
-        screenshot_url = url_for('static', filename=f'screenshots/{screenshot_filename}')
-    
     return render_template('admin_verification_detail.html', 
                           verification=verification,
-                          verification_id=verification_id,
-                          screenshot_url=screenshot_url)
+                          verification_id=verification_id)
 
 @app.route('/api/admin/verifications')
 @admin_required
