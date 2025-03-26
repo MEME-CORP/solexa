@@ -181,10 +181,15 @@ class TelegramBot:
 
         # Check if bot is mentioned using its username
         bot_username = Config.BOT_USERNAME
-        if f"@{bot_username}" not in update.message.text:
-            return  # Exit if bot is not tagged
+        # Modified to also respond when "Solexa" or "solexa" is mentioned
+        if f"@{bot_username}" not in update.message.text and "solexa" not in update.message.text.lower():
+            return  # Exit if bot is not tagged and "solexa" not mentioned
 
-        user_message = update.message.text.replace(f"@{bot_username}", "").strip()  # Remove bot mention
+        # Remove bot mention if present
+        user_message = update.message.text
+        if f"@{bot_username}" in user_message:
+            user_message = user_message.replace(f"@{bot_username}", "").strip()
+        
         user_id = update.message.from_user.id
         username = update.message.from_user.username or f'User{user_id}'
 
