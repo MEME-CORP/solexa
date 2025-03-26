@@ -369,7 +369,8 @@ class WalletManager:
         """Calculate token marketcap based on price and total supply"""
         try:
             logger.info(f"Fetching marketcap for token: {mint_address}")
-            TOTAL_SUPPLY = Decimal('1000000000')
+            TOTAL_SUPPLY = Decimal('20999909')
+
             DEFAULT_BONDING_CURVE_MC = Decimal('5000')
             success, price_data = await self.get_token_price(mint_address)
             
