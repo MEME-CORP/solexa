@@ -194,14 +194,21 @@ class AIGenerator:
         if self.mode == 'twitter':
             prompt_template = self.bot_prompts.get('twitter', {}).get('content_prompt', '')
             
-            # Randomly choose between current instructions and memories
-            use_memories = random.random() < 0.1  # 20% chance to use memories
-            logger.info("Content generation mode: %s", "Using memories" if use_memories else "Using current instructions")
+            # Check for crypto news if provided
+            crypto_news = kwargs.get('crypto_news', '')
+            
+            # Randomly choose between memories, current instructions, or crypto news
+            choice = random.random()
+            use_memories = choice < 0.1  # 10% chance to use memories
+            use_crypto_news = 0.1 <= choice < 0.6  # 50% chance to use crypto news
+            
+            logger.info("Content generation mode: %s", 
+                       "Using memories" if use_memories else 
+                       "Using crypto news" if use_crypto_news else 
+                       "Using current instructions")
             
             if use_memories:
                 # When using memories, we can now just focus on memories
-                # Removed narrative context code
-                
                 # Ensure we're using the memory context
                 if self.memories:
                     memory_context = random.choice(self.memories) if isinstance(self.memories, list) else self.memories
@@ -209,12 +216,20 @@ class AIGenerator:
                 else:
                     logger.warning("No memories available for selection")
                     memory_context = "no memories available"
-            
-            tweet_content = (
-                f"user_message: {kwargs.get('user_message', '')[9:].strip()}" if kwargs.get('user_message', '').startswith('reply to:')
-                else "one of your memories randomly" if use_memories
-                else "something interesting"  # Changed from event/dialogue reference
-            )
+                
+                tweet_content = "one of your memories randomly"
+                
+            elif use_crypto_news and crypto_news:
+                # Use crypto news as the tweet content
+                tweet_content = f"the following crypto news: {crypto_news}"
+                logger.info(f"Using crypto news for tweet: {crypto_news[:100]}...")
+                
+            else:
+                # Default case - use general instructions
+                tweet_content = (
+                    f"user_message: {kwargs.get('user_message', '')[9:].strip()}" if kwargs.get('user_message', '').startswith('reply to:')
+                    else "something interesting about cryptocurrency"
+                )
             
             # If using memories, refresh them from database
             if use_memories:
@@ -639,4 +654,189 @@ class AIGenerator:
         )
         
         return response.choices[0].message.content
+
+    def generate_image(self, prompt, **kwargs):
+        """Generate an image based on a text prompt using Gemini's capabilities
+        
+        Args:
+            prompt (str): The prompt describing the image to generate
+            **kwargs: Additional parameters for image generation
+            
+        Returns:
+            dict: Response containing the generated image data or error information
+        """
+        logger.info(f"Generating image with prompt: {prompt[:100]}..." if len(prompt) > 100 else prompt)
+        
+        try:
+            # Note: As of current implementation, Gemini might not directly support image generation
+            # through the OpenAI-compatible interface used in this code
+            # This implementation tries to accommodate that limitation
+            
+            # First, enhance the prompt to get better results
+            enhancement_messages = [
+                {"role": "system", "content": "You are Solexa, an AI assistant helping to generate detailed image descriptions. Take the user's image request and enhance it with vivid details for better image generation results."},
+                {"role": "user", "content": f"Enhance this image prompt with vivid details while keeping the same meaning (don't make it too long): {prompt}"}
+            ]
+            
+            enhancement_response = self.client.chat.completions.create(
+                model=self.model,
+                messages=enhancement_messages,
+                temperature=0.7,
+                max_tokens=150
+            )
+            
+            enhanced_prompt = enhancement_response.choices[0].message.content
+            logger.info(f"Enhanced image prompt: {enhanced_prompt}")
+            
+            # Config for image generation
+            api_base_url = kwargs.get('api_base_url', Config.IMAGE_API_URL)
+            api_key = kwargs.get('api_key', Config.IMAGE_API_KEY) 
+            
+            # Check if we have necessary config for external image API
+            if api_base_url and api_key:
+                import requests
+                
+                # Prepare request to external image generation API
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {api_key}"
+                }
+                
+                data = {
+                    "prompt": enhanced_prompt,
+                    "n": 1,
+                    "size": kwargs.get("size", "1024x1024")
+                }
+                
+                # Make the request to the image API
+                response = requests.post(f"{api_base_url}/images/generations", headers=headers, json=data)
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    logger.info("Successfully generated image through external API")
+                    return {
+                        "url": result["data"][0]["url"],
+                        "success": True
+                    }
+                else:
+                    logger.error(f"External API error: {response.text}")
+                    return {
+                        "error": f"External API error: {response.status_code}",
+                        "success": False,
+                        "enhanced_prompt": enhanced_prompt
+                    }
+            else:
+                # If no external API is configured, return the enhanced prompt
+                logger.warning("No image generation API configured. Returning enhanced prompt only.")
+                return {
+                    "success": False,
+                    "message": "Direct image generation not available. Enhanced prompt provided.",
+                    "enhanced_prompt": enhanced_prompt
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in image generation process: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            
+            return {
+                "error": str(e),
+                "success": False
+            }
+
+    def fetch_crypto_news(self, specific_topic=None):
+        """Fetch the latest crypto news using GPT-4o mini Search Preview model"""
+        logger.info("Fetching latest crypto news via web search")
+        
+        try:
+            # Initialize OpenAI client for search model
+            search_client = OpenAI(
+                api_key=Config.OPENAI_API_KEY,
+                base_url="https://api.openai.com/v1"  # Use standard OpenAI API endpoint
+            )
+            
+            # Prepare search query
+            query = "What are the latest important cryptocurrency news or market updates today?"
+            if specific_topic:
+                query = f"What are the latest cryptocurrency news about {specific_topic} today?"
+            
+            logger.info(f"Making web search request with query: {query}")
+            
+            # Make request to GPT-4o mini search preview with correct parameter format
+            completion = search_client.chat.completions.create(
+                model="gpt-4o-mini-search-preview",
+                messages=[{
+                    "role": "user",
+                    "content": query
+                }],
+                web_search_options={
+                    "search_context_size": "medium"
+                }
+            )
+            
+            # Extract and log news content
+            news_content = completion.choices[0].message.content
+            
+            # Extract citations if available
+            citations = []
+            if hasattr(completion.choices[0].message, 'annotations') and completion.choices[0].message.annotations:
+                for annotation in completion.choices[0].message.annotations:
+                    if annotation.type == "url_citation":
+                        citation = {
+                            "title": annotation.url_citation.title,
+                            "url": annotation.url_citation.url
+                        }
+                        citations.append(citation)
+            
+            logger.info(f"Retrieved crypto news: {news_content[:100]}...")
+            logger.info(f"Found {len(citations)} citations")
+            
+            return {
+                "content": news_content,
+                "citations": citations
+            }
+        except Exception as e:
+            logger.error(f"Error fetching crypto news: {e}")
+            logger.error(traceback.format_exc())
+            return {
+                "content": "Unable to fetch latest crypto news at this time.",
+                "citations": []
+            }
+
+    def transform_crypto_news(self, news_data):
+        """Transform crypto news into Solexa's style using the transform system prompt"""
+        logger.info("Transforming crypto news into Solexa's style")
+        
+        try:
+            # Extract content and prepare for transformation
+            news_content = news_data.get("content", "")
+            if not news_content or news_content == "Unable to fetch latest crypto news at this time.":
+                return "chur team, tried to grab the latest crypto goss but the web's acting up. we'll try again soon, yeah?"
+            
+            # Prepare messages for transformation
+            messages = [
+                {"role": "system", "content": self.transform_system_prompt},
+                {"role": "user", "content": f"Transform this crypto news into your own words and style: {news_content}"}
+            ]
+            
+            # Generate transformed content
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=self.max_tokens * 2,  # Allow longer responses for news
+            )
+            
+            transformed_content = response.choices[0].message.content
+            
+            # Ensure we don't exceed Twitter's character limit
+            if self.mode == 'twitter' and len(transformed_content) > 280:
+                transformed_content = transformed_content[:277] + "..."
+            
+            logger.info(f"Transformed news content: {transformed_content[:100]}...")
+            return transformed_content
+            
+        except Exception as e:
+            logger.error(f"Error transforming crypto news: {e}")
+            logger.error(traceback.format_exc())
+            return "tried to scope some crypto buzz but my circuits are fried. back in a tick, yeah?"
 

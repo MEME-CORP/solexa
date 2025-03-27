@@ -13,6 +13,7 @@ from .scraper import Scraper
 from .tweets import TweetManager
 from src.announcement_broadcaster import AnnouncementBroadcaster
 from .twitter_service import twitter_service
+from src.config import Config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -187,11 +188,48 @@ class TwitterBot:
                     logger.warning("Tweet generation postponed due to verification issues")
                     return
             
-            # Generate content using AIGenerator - no topic needed
-            content = self.generator.generate_content(
-                conversation_context='',
-                username=''
-            )
+            # Check if OPENAI_API_KEY is configured
+            if not Config.OPENAI_API_KEY:
+                logger.warning("OpenAI API key not configured, using standard content generation")
+                use_crypto_news = False
+            else:
+                # Decide whether to use crypto news (70% chance)
+                use_crypto_news = random.random() < 0.7
+            
+            if use_crypto_news:
+                try:
+                    logger.info("Fetching crypto news for tweet generation")
+                    # Fetch crypto news
+                    news_data = self.generator.fetch_crypto_news()
+                    
+                    # Verify we got valid news content
+                    if news_data and news_data.get("content") and news_data.get("content") != "Unable to fetch latest crypto news at this time.":
+                        # Transform the news into Solexa's style
+                        content = self.generator.transform_crypto_news(news_data)
+                        
+                        # Log the original news and transformed content
+                        logger.info("Original news: %s", news_data.get("content", "")[:150])
+                        logger.info("Transformed content: %s", content)
+                    else:
+                        logger.warning("No valid news content retrieved, falling back to standard generation")
+                        content = self.generator.generate_content(
+                            conversation_context='',
+                            username=''
+                        )
+                        
+                except Exception as news_error:
+                    logger.error(f"Error with crypto news: {news_error}, falling back to standard generation")
+                    # Fall back to standard generation if news fetch/transform fails
+                    content = self.generator.generate_content(
+                        conversation_context='',
+                        username=''
+                    )
+            else:
+                # Generate standard content using AIGenerator
+                content = self.generator.generate_content(
+                    conversation_context='',
+                    username=''
+                )
 
             if not content or not isinstance(content, str):
                 logger.error("No valid content generated")
