@@ -11,6 +11,7 @@ import time
 import os
 from pathlib import Path
 from datetime import datetime
+from selenium.webdriver.common.keys import Keys
 
 # Configure logging
 logger = logging.getLogger('Scraper')
@@ -153,14 +154,16 @@ class Scraper:
                 logger.error(f"Failed to force kill process: {cleanup_error}")
 
     def is_verification_screen(self):
-        """Detect if current page is a verification screen asking for code"""
+        """Detect if current page is a verification screen asking for code or email"""
         try:
             # Look for verification elements with a short timeout
             verification_texts = [
                 "Sieh in deiner E-Mail nach",  # German
                 "Check your email",            # English
                 "Bestätigungscode",            # German
-                "verification code"            # English
+                "verification code",           # English
+                "Gib deine Telefonnummer oder E-Mail-Adresse ein",  # German email verification
+                "Enter your phone number or email address"          # English email verification
             ]
             
             for text in verification_texts:
@@ -171,6 +174,11 @@ class Scraper:
             # Check for verification input field
             code_fields = self.driver.find_elements("xpath", "//input[contains(@placeholder, 'code') or contains(@placeholder, 'Code')]")
             if code_fields:
+                return True
+            
+            # Check for email verification input field
+            email_fields = self.driver.find_elements("xpath", "//input[@data-testid='ocfEnterTextTextInput']")
+            if email_fields:
                 return True
             
             return False
@@ -191,8 +199,81 @@ class Scraper:
             if not self.is_verification_screen():
                 return True
             
-            logger.warning("VERIFICATION REQUIRED: Twitter is asking for a verification code")
+            logger.warning("VERIFICATION REQUIRED: Twitter is asking for verification")
             
+            # Check if it's an email verification screen first
+            email_verification_texts = [
+                "Gib deine Telefonnummer oder E-Mail-Adresse ein",
+                "Enter your phone number or email address"
+            ]
+            
+            for text in email_verification_texts:
+                elements = self.driver.find_elements("xpath", f"//*[contains(text(), '{text}')]")
+                if elements:
+                    logger.info("Detected email verification screen")
+                    
+                    # Get the email from config
+                    from src.config import Config
+                    email = Config.TWITTER_EMAIL
+                    
+                    # Find the input field
+                    try:
+                        input_field = self.driver.find_element("xpath", "//input[@data-testid='ocfEnterTextTextInput']")
+                        if input_field:
+                            input_field.clear()
+                            input_field.send_keys(email)
+                            logger.info(f"Entered email: {email}")
+                            
+                            # Find and click the continue button
+                            try:
+                                continue_button = self.driver.find_element("xpath", "//button[@data-testid='ocfEnterTextNextButton']")
+                                if continue_button:
+                                    continue_button.click()
+                                    logger.info("Clicked continue button after entering email")
+                                    time.sleep(3)
+                                    
+                                    # Check if verification screen is still present
+                                    if not self.is_verification_screen():
+                                        logger.info("Email verification completed successfully")
+                                        return True
+                                else:
+                                    # Try with role and text
+                                    try:
+                                        continue_button = self.driver.find_element("xpath", "//button[@role='button']//span[contains(text(), 'Weiter')]/..")
+                                        continue_button.click()
+                                        logger.info("Clicked continue button after entering email (using text)")
+                                        time.sleep(3)
+                                        
+                                        if not self.is_verification_screen():
+                                            logger.info("Email verification completed successfully")
+                                            return True
+                                    except:
+                                        # Try English button text
+                                        try:
+                                            continue_button = self.driver.find_element("xpath", "//button[@role='button']//span[contains(text(), 'Next')]/..")
+                                            continue_button.click()
+                                            logger.info("Clicked continue button after entering email (using English text)")
+                                            time.sleep(3)
+                                            
+                                            if not self.is_verification_screen():
+                                                logger.info("Email verification completed successfully")
+                                                return True
+                                        except:
+                                            # Try to press Enter key if button not found
+                                            input_field.send_keys(Keys.RETURN)
+                                            logger.info("Pressed Enter key after entering email")
+                                            time.sleep(3)
+                                            
+                                            if not self.is_verification_screen():
+                                                logger.info("Email verification completed successfully")
+                                                return True
+                            except Exception as e:
+                                logger.error(f"Error clicking continue button: {e}")
+                    except Exception as e:
+                        logger.error(f"Error finding input field: {e}")
+            
+            # If we're still here, it's a code verification or other type
+            # Proceed with the original verification handling
             # Capture screenshot for remote verification
             screenshot_path = self._capture_verification_screenshot()
             

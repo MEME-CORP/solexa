@@ -101,11 +101,17 @@ class Authenticator:
             username_field.send_keys(Keys.RETURN)
             time.sleep(2)
 
+            # Check if we're asked for email verification before password
+            self._handle_email_verification()
+            
             # Enter password
             password_field = self.driver.find_element(By.NAME, "password")
             password_field.send_keys(self.password)
             password_field.send_keys(Keys.RETURN)
             time.sleep(5)  # Wait for login to complete
+            
+            # Check again for email verification after password
+            self._handle_email_verification()
             
             # Note: We don't check for verification here to avoid circular dependency
             # Verification is handled at the TwitterBot level
@@ -124,6 +130,64 @@ class Authenticator:
         except Exception as e:
             logger.error(f"Login failed: {e}")
             return False
+
+    def _handle_email_verification(self):
+        """Handle the email verification screen during login"""
+        try:
+            # Check for German title "Gib deine Telefonnummer oder E-Mail-Adresse ein"
+            email_verification_elements = self.driver.find_elements(By.XPATH, 
+                "//*[contains(text(), 'Gib deine Telefonnummer oder E-Mail-Adresse ein')]")
+            
+            if not email_verification_elements:
+                # Also check for English variant
+                email_verification_elements = self.driver.find_elements(By.XPATH, 
+                    "//*[contains(text(), 'Enter your phone number or email address')]")
+            
+            if email_verification_elements:
+                logger.info("Email verification screen detected")
+                
+                # Look for the input field
+                try:
+                    input_field = self.driver.find_element(By.NAME, "text")
+                except NoSuchElementException:
+                    # Try alternative selector if the name attribute doesn't work
+                    input_field = self.driver.find_element(By.XPATH, "//input[@data-testid='ocfEnterTextTextInput']")
+                
+                if input_field:
+                    input_field.clear()
+                    input_field.send_keys(self.email)
+                    logger.info(f"Entered email: {self.email}")
+                    
+                    # Look for the continue/submit button using data-testid
+                    try:
+                        continue_button = self.driver.find_element(By.XPATH, "//button[@data-testid='ocfEnterTextNextButton']")
+                        continue_button.click()
+                        logger.info("Clicked continue button after entering email")
+                        time.sleep(3)  # Wait for the next screen to load
+                    except NoSuchElementException:
+                        # Try with role and text
+                        try:
+                            continue_button = self.driver.find_element(By.XPATH, "//button[@role='button']//span[contains(text(), 'Weiter')]/..")
+                            continue_button.click()
+                            logger.info("Clicked continue button after entering email (using text)")
+                            time.sleep(3)
+                        except NoSuchElementException:
+                            # Try English button text
+                            try:
+                                continue_button = self.driver.find_element(By.XPATH, "//button[@role='button']//span[contains(text(), 'Next')]/..")
+                                continue_button.click()
+                                logger.info("Clicked continue button after entering email (using English text)")
+                                time.sleep(3)
+                            except NoSuchElementException:
+                                # Try to press Enter key if button not found
+                                input_field.send_keys(Keys.RETURN)
+                                logger.info("Pressed Enter key after entering email")
+                                time.sleep(3)
+            
+        except Exception as e:
+            logger.warning(f"Error during email verification handling: {e}")
+            # Don't raise the exception, just log it and continue the login flow
+            pass
 
     def logout(self):
         """Log out from Twitter"""
