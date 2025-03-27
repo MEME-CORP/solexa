@@ -48,15 +48,15 @@ class AIGenerator:
         # Add transformation system prompt
         self.transform_system_prompt = self._load_transform_system_prompt()
         
-        # Initialize OpenAI client
+        # Initialize OpenAI client with Gemini configuration
         self.client = OpenAI(
-            api_key=Config.GLHF_API_KEY,
-            base_url=Config.OPENAI_BASE_URL
+            api_key=Config.GEMINI_API_KEY,
+            base_url=Config.GEMINI_BASE_URL
         )
         
-        # Always use Gemma for direct user interactions
-        self.model = Config.AI_MODEL2  # This is gemma-2-9b-it
-
+        # Use Gemini models
+        self.model = Config.GEMINI_MODEL
+        
         # Initialize memory decision
         self.memory_decision = MemoryDecision()
         
@@ -381,14 +381,34 @@ class AIGenerator:
                 logger.info("Role: %s", msg["role"])
                 logger.info("Content preview: %s", msg["content"][:200] + "..." if len(msg["content"]) > 200 else msg["content"])
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
-            
-            generated_content = response.choices[0].message.content
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+                
+                generated_content = response.choices[0].message.content
+                
+            except Exception as api_error:
+                logger.error(f"Gemini API error: {str(api_error)}")
+                
+                # Fall back to alternative model if primary fails
+                if self.model == Config.GEMINI_MODEL:
+                    logger.info("Falling back to alternative Gemini model")
+                    self.model = "gemini-1.5-flash"  # Fallback model
+                    
+                    response = self.client.chat.completions.create(
+                        model=self.model,
+                        messages=messages,
+                        temperature=self.temperature,
+                        max_tokens=self.max_tokens,
+                    )
+                    
+                    generated_content = response.choices[0].message.content
+                else:
+                    raise
             
             # Log LLM response details
             logger.info("LLM Response Details:")
@@ -580,4 +600,43 @@ class AIGenerator:
             logger.error(f"Error transforming message: {str(e)}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
             raise
+
+    def generate_content_with_image(self, image_path, prompt, **kwargs):
+        """Generate content with image input"""
+        import base64
+        
+        # Function to encode the image
+        def encode_image(image_path):
+            with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+        
+        # Getting the base64 string
+        base64_image = encode_image(image_path)
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt,
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        },
+                    },
+                ],
+            }
+        ]
+        
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+        )
+        
+        return response.choices[0].message.content
 

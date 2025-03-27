@@ -20,11 +20,18 @@ class Config:
     TWITTER_PASSWORD = os.getenv('TWITTER_PASSWORD')
     TWITTER_EMAIL = os.getenv('TWITTER_EMAIL')
 
-    # OpenAI Client
+    # OpenAI Client with Gemini configuration
     openai_client = OpenAI(
-        api_key=GLHF_API_KEY,
-        base_url=os.getenv('OPENAI_BASE_URL', 'https://glhf.chat/api/openai/v1')
+        api_key=os.getenv('GEMINI_API_KEY'),
+        base_url=os.getenv('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/')
     )
+
+    # Add these lines for Gemini configuration
+    GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    GEMINI_BASE_URL = os.getenv('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+
+    # Default models to use 
+    GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')
 
     # Bot Configuration
     BOT_USERNAME = os.getenv('BOT_USERNAME', 'papayaelbot')
