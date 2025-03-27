@@ -342,11 +342,14 @@ class TelegramBot:
             "bitcoin price", "btc value", "btc worth", "bitcoin worth"
         ]
         
-        # Solana detection
+        # Solana detection - REMOVED "sol" from this list to avoid matching "solexa"
         sol_phrases = [
-            "solana", "sol", "solana marketcap", "sol market cap",
+            "solana", "solana marketcap", "sol market cap",
             "solana price", "sol value", "sol worth", "solana worth"
         ]
+        
+        # Additional exact match check for "sol" to avoid matching "solexa"
+        sol_exact_matches = ["sol"]
         
         # Check for explicit mentions of Bitcoin
         for phrase in btc_phrases:
@@ -356,6 +359,12 @@ class TelegramBot:
         # Check for explicit mentions of Solana
         for phrase in sol_phrases:
             if phrase in message:
+                return "SOL"
+                
+        # Special handling for exact "sol" match to avoid matching "solexa"
+        for exact_match in sol_exact_matches:
+            # Check for word boundaries using regex to ensure we match "sol" but not "solexa"
+            if re.search(r'\b' + exact_match + r'\b', message):
                 return "SOL"
                 
         # If no specific crypto is mentioned but it's a marketcap inquiry,
