@@ -40,6 +40,18 @@ services:
       - chrome-data:/tmp/chrome_user_data
     restart: unless-stopped
 
+  telegram:
+    build:
+      context: .
+      dockerfile: Dockerfile.telegram
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - web-interface
+
 volumes:
   shared-storage:
   logs-volume:
