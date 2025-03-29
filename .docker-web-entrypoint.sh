@@ -19,11 +19,6 @@ if [ "$SKIP_CHMOD" != "true" ]; then
     mkdir -p /tmp/chromedriver || true
 fi
 
-# Set a unique user data directory for the web interface
-export CHROME_USER_DATA_DIR="/app/internal/chrome_data_web"
-mkdir -p $CHROME_USER_DATA_DIR || true
-chmod -R 777 $CHROME_USER_DATA_DIR || true
-
 # Use internal directories that don't depend on volume permissions
 export SCREENSHOTS_DIR="${SCREENSHOTS_DIR:-/app/static/screenshots}"
 export LOGS_DIR="${LOGS_DIR:-/app/logs}"

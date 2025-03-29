@@ -191,9 +191,6 @@ def post_to_twitter():
             # Use a different remote debugging port to avoid conflicts with the main Twitter bot
             os.environ["REMOTE_DEBUGGING_PORT"] = "9223"  # Different from the default 9222
             
-            # Set a unique user data directory for the web interface
-            os.environ["CHROME_USER_DATA_DIR"] = "/app/internal/chrome_data_web"
-            
             initialization_success = twitter_service.initialize(proxy_url=os.getenv("PROXY_URL"))
             
             if not initialization_success:

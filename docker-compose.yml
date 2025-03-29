@@ -14,11 +14,9 @@ services:
       - PYTHONPATH=/app
       - TZ=UTC
       - SKIP_CHMOD=true
-      - REMOTE_DEBUGGING_PORT=9222
     volumes:
       - shared-storage:/app/static
       - logs-volume:/app/logs
-      - twitter-chrome-data:/app/internal/chrome_data_twitter
     restart: unless-stopped
 
   web-interface:
@@ -33,17 +31,13 @@ services:
       - PYTHONPATH=/app
       - TZ=UTC
       - SKIP_CHMOD=true
-      - REMOTE_DEBUGGING_PORT=9223
     ports:
       - "5000:5000"
     volumes:
       - shared-storage:/app/static
       - logs-volume:/app/logs
-      - web-chrome-data:/app/internal/chrome_data_web
     restart: unless-stopped
 
 volumes:
   shared-storage:
-  logs-volume:
-  twitter-chrome-data:
-  web-chrome-data: 
+  logs-volume: 

@@ -19,11 +19,6 @@ if [ "$SKIP_CHMOD" != "true" ]; then
     mkdir -p /tmp/chromedriver || true
 fi
 
-# Set a unique user data directory for the Twitter bot
-export CHROME_USER_DATA_DIR="/app/internal/chrome_data_twitter"
-mkdir -p $CHROME_USER_DATA_DIR || true
-chmod -R 777 $CHROME_USER_DATA_DIR || true
-
 # If we need to create notifications sound file
 if [ ! -f /app/static/notification.mp3 ]; then
     echo "Creating a placeholder notification sound"
