@@ -11,6 +11,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from logging.handlers import RotatingFileHandler
 import threading
 import json
+import tempfile
+import uuid
 
 # Add the project root to Python path to enable imports
 project_root = Path(__file__).parent.parent.parent
@@ -188,12 +190,24 @@ def post_to_twitter():
         
         # Initialize the Twitter service if not already initialized
         if not twitter_service.is_initialized():
-            # Use a different remote debugging port to avoid conflicts with the main Twitter bot
-            os.environ["REMOTE_DEBUGGING_PORT"] = "9223"  # Different from the default 9222
+            # Create a unique user data directory for this instance
+            unique_id = str(uuid.uuid4())
+            user_data_dir = os.path.join(tempfile.gettempdir(), f'chrome_user_data_{unique_id}')
+            os.environ["CHROME_USER_DATA_DIR"] = user_data_dir
+            
+            # Use a different remote debugging port to avoid conflicts
+            os.environ["REMOTE_DEBUGGING_PORT"] = str(9223 + hash(unique_id) % 100)
             
             initialization_success = twitter_service.initialize(proxy_url=os.getenv("PROXY_URL"))
             
             if not initialization_success:
+                # Clean up the temporary directory if initialization fails
+                try:
+                    import shutil
+                    shutil.rmtree(user_data_dir, ignore_errors=True)
+                except Exception as e:
+                    logger.warning(f"Failed to clean up user data directory: {e}")
+                
                 # If the service has a scraper but initialization failed, check for verification
                 if twitter_service.scraper and twitter_service.scraper.is_verification_screen():
                     logger.warning("Twitter verification required")
@@ -227,11 +241,19 @@ def post_to_twitter():
 def cleanup_twitter():
     """Clean up Twitter resources when finished."""
     try:
-        # We don't actually close the service anymore since it's shared
-        # Just acknowledge the request
-        return jsonify({"success": True, "message": "Twitter service maintained for future requests"})
+        # Clean up the user data directory if it exists
+        user_data_dir = os.environ.get("CHROME_USER_DATA_DIR")
+        if user_data_dir and os.path.exists(user_data_dir):
+            try:
+                import shutil
+                shutil.rmtree(user_data_dir, ignore_errors=True)
+                logger.info(f"Cleaned up user data directory: {user_data_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up user data directory: {e}")
+        
+        return jsonify({"success": True, "message": "Twitter service cleaned up"})
     except Exception as e:
-        logger.error(f"Error responding to cleanup request: {e}", exc_info=True)
+        logger.error(f"Error during cleanup: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/admin/login', methods=['GET', 'POST'])
