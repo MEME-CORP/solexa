@@ -113,6 +113,11 @@
         .logout-btn:hover {
             color: white;
         }
+        @keyframes flash {
+            0% { background-color: #333341; }
+            50% { background-color: #9d4edd; }
+            100% { background-color: #333341; }
+        }
     </style>
 </head>
 <body>
@@ -161,8 +166,34 @@
                         if (count > 0) {
                             badge.textContent = count;
                             badge.style.display = 'inline-block';
+                            
+                            // Add notification sound and visual indicator
+                            if (badge.getAttribute('data-previous-count') !== count.toString()) {
+                                // Play notification sound if supported
+                                try {
+                                    const audio = new Audio('/static/notification.mp3');
+                                    audio.play();
+                                } catch (e) {
+                                    console.log('Audio notification not supported');
+                                }
+                                
+                                // Flash the menu item
+                                const menuItem = document.getElementById('verification-menu-item');
+                                menuItem.style.animation = 'none';
+                                setTimeout(() => {
+                                    menuItem.style.animation = 'flash 2s infinite';
+                                }, 10);
+                            }
+                            
+                            // Update previous count
+                            badge.setAttribute('data-previous-count', count.toString());
                         } else {
                             badge.style.display = 'none';
+                            badge.setAttribute('data-previous-count', '0');
+                            
+                            // Remove animation
+                            const menuItem = document.getElementById('verification-menu-item');
+                            menuItem.style.animation = 'none';
                         }
                     })
                     .catch(error => {
@@ -172,7 +203,7 @@
             
             // Check status periodically
             checkVerifications();
-            setInterval(checkVerifications, 10000); // Check every 10 seconds
+            setInterval(checkVerifications, 5000); // Check every 5 seconds
         });
     </script>
 </body>

@@ -27,9 +27,20 @@ class TwitterBot:
         project_root = Path(__file__).parent.parent.parent
         env_path = project_root / '.env'
         
-        logger.info("Loading environment variables...")
-        if not load_dotenv(dotenv_path=env_path, override=True):
-            raise ValueError(f"Could not load .env file from {env_path}")
+        # Check if we're in a Docker environment
+        in_docker = os.environ.get("DOCKER_ENV") == "true"
+        
+        # Only try to load the .env file if not in Docker environment
+        # In Docker, environment variables are passed directly
+        if not in_docker:
+            logger.info("Loading environment variables from .env file...")
+            try:
+                if not load_dotenv(dotenv_path=env_path, override=True):
+                    logger.warning(f"Could not load .env file from {env_path}, but continuing anyway...")
+            except Exception as e:
+                logger.warning(f"Error loading .env file: {e}, continuing with environment variables only...")
+        else:
+            logger.info("Running in Docker environment, using container environment variables...")
         
         # Initialize components
         self.generator = AIGenerator(mode='twitter')
@@ -55,6 +66,10 @@ class TwitterBot:
 
             # Initialize the twitter service
             if not self.service.is_initialized():
+                # For docker environment ensure headless is set
+                if os.environ.get("DOCKER_ENV") == "true":
+                    os.environ["HEADLESS_BROWSER"] = "true"
+                
                 # For the main bot, use default port
                 os.environ.pop("REMOTE_DEBUGGING_PORT", None)  # Remove if set
                 
@@ -277,3 +292,17 @@ class TwitterBot:
             if not self.initialize():
                 raise Exception("Could not initialize Twitter bot components")
         return self.service.get_tweet_manager()
+
+if __name__ == "__main__":
+    try:
+        bot = TwitterBot()
+        bot.run()  # This should already be an infinite loop
+    except KeyboardInterrupt:
+        print("Keyboard interrupt received, shutting down...")
+        if bot:
+            bot.stop()
+            bot.cleanup()
+    except Exception as e:
+        print(f"Error in main thread: {e}")
+        import traceback
+        traceback.print_exc()

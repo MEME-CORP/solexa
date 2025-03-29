@@ -9,6 +9,10 @@ from selenium.webdriver.common.by import By
 import time
 import re
 from src.twitter_bot.twitter_service import twitter_service
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import os
 
 logger = logging.getLogger('AnnouncementBroadcaster')
 
@@ -334,3 +338,68 @@ class AnnouncementBroadcaster:
             cls._pending_tweets.append(message)
             cls.log_debug(f"Twitter not available, queued announcement: {message[:30]}...")
             return False
+
+    @classmethod
+    def _get_session(cls):
+        """Get a configured requests session with proper pooling and retry settings"""
+        # Create a session with connection pooling management
+        session = requests.Session()
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+        )
+        
+        # Configure the adapter with the retry strategy and pool settings
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,  # Increase connection pool size
+            pool_maxsize=10       # Increase max size of the pool
+        )
+        
+        # Mount the adapter for both http and https
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        return session
+
+    @classmethod
+    def broadcast_urgent_message(cls, message):
+        """Broadcast an urgent message to all configured channels"""
+        success = False
+        
+        try:
+            # Try to get admin URL from environment
+            admin_url = os.environ.get("ADMIN_BASE_URL", "http://localhost:5000")
+            
+            # For Docker environment, use the service name
+            if os.environ.get("DOCKER_ENV") == "true":
+                admin_url = "http://web-interface:5000"
+                
+            notification_url = f"{admin_url}/api/admin/notifications"
+            
+            # Use the session with proper connection pooling
+            session = cls._get_session()
+            
+            # Send the notification
+            response = session.post(
+                notification_url,
+                json={"message": message, "type": "urgent"},
+                timeout=5  # Add timeout to prevent hanging
+            )
+            
+            # Check if successful
+            if response.status_code == 200:
+                success = True
+            else:
+                # Log the failure but don't raise exception
+                print(f"Failed to send notification: HTTP {response.status_code}")
+        
+        except Exception as e:
+            # Log the error but don't crash
+            print(f"Failed to broadcast notification: {e}")
+        
+        return success

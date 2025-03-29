@@ -1,0 +1,70 @@
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CHROME_BIN=/usr/bin/google-chrome \
+    CHROMEDRIVER_DIR=/usr/local/share/chrome_driver \
+    CHROMEDRIVER_PATH=/usr/local/share/chrome_driver/chromedriver \
+    DOCKER_ENV=true \
+    LOGLEVEL=INFO \
+    URLLIB3_CONNECTIONPOOL_SIZE=20 \
+    PYTHONWARNINGS="ignore:Connection pool is full"
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    gnupg \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directory for chrome driver
+RUN mkdir -p $CHROMEDRIVER_DIR && chmod -R 777 $CHROMEDRIVER_DIR
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt gunicorn
+
+# Create chromedriver directories with proper permissions
+RUN mkdir -p /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller/134 \
+    && chmod -R 777 /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
+
+# Copy the rest of the application
+COPY . .
+
+# Create internal directories that won't interfere with mounted volumes
+RUN mkdir -p /app/internal/screenshots \
+    && mkdir -p /app/internal/logs \
+    && mkdir -p /app/internal/chromedriver \
+    && chmod -R 777 /app/internal/screenshots \
+    && chmod -R 777 /app/internal/logs \
+    && chmod -R 777 /app/internal/chromedriver
+
+# Add web entrypoint script
+COPY .docker-web-entrypoint.sh /app/.docker-web-entrypoint.sh
+RUN chmod +x /app/.docker-web-entrypoint.sh
+
+# Create a non-root user and set proper permissions
+RUN useradd -m appuser \
+    && chown -R appuser:appuser /app \
+    && chown -R appuser:appuser $CHROMEDRIVER_DIR \
+    && chown -R appuser:appuser /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
+
+USER appuser
+
+# Use the entrypoint script - now using main.py instead of gunicorn
+ENTRYPOINT ["/app/.docker-web-entrypoint.sh"]
+CMD ["python", "main.py", "--bots", "web", "--web-host", "0.0.0.0", "--web-port", "5000"] 

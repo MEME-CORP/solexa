@@ -8,6 +8,9 @@ import functools
 import time
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from logging.handlers import RotatingFileHandler
+import threading
+import json
 
 # Add the project root to Python path to enable imports
 project_root = Path(__file__).parent.parent.parent
@@ -24,6 +27,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('web_interface')
 
 app = Flask(__name__)
+
+# Add Flask secret key from environment variable or use a default for development
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "3d6f45a5fc12445dbac2f59c3b6c7cb1d3c4a91764d5a788")
+
+# Log a warning if using default secret key in production
+if os.getenv("FLASK_ENV") == "production" and app.secret_key == "3d6f45a5fc12445dbac2f59c3b6c7cb1d3c4a91764d5a788":
+    logger.warning("WARNING: Using default secret key in production environment. This is insecure!")
+
 generator = AIGenerator(mode='twitter')  # For Twitter styling
 telegram_generator = AIGenerator(mode='discord_telegram')  # For Telegram styling
 
@@ -180,6 +191,9 @@ def post_to_twitter():
             # Use a different remote debugging port to avoid conflicts with the main Twitter bot
             os.environ["REMOTE_DEBUGGING_PORT"] = "9223"  # Different from the default 9222
             
+            # Set a unique user data directory for the web interface
+            os.environ["CHROME_USER_DATA_DIR"] = "/app/internal/chrome_data_web"
+            
             initialization_success = twitter_service.initialize(proxy_url=os.getenv("PROXY_URL"))
             
             if not initialization_success:
@@ -305,12 +319,97 @@ def api_submit_verification(verification_id):
     
     return jsonify({"success": success})
 
-# Initialize the app
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "development_key")
+@app.route('/setup-directories')
+def setup_directories():
+    """Ensure necessary directories exist."""
+    os.makedirs(os.path.join(app.static_folder, 'screenshots'), exist_ok=True)
+    return "Directories set up successfully"
+
+with app.app_context():
+    # Create necessary directories
+    if not os.path.exists(os.path.join(app.static_folder, 'screenshots')):
+        os.makedirs(os.path.join(app.static_folder, 'screenshots'), exist_ok=True)
+        logger.info("Created screenshots directory")
+
+# Setup file logging
+log_dir = os.path.join(project_root, 'logs')
+os.makedirs(log_dir, exist_ok=True)
+file_handler = RotatingFileHandler(
+    os.path.join(log_dir, 'web_interface.log'),
+    maxBytes=10485760,  # 10MB
+    backupCount=5
+)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+))
+file_handler.setLevel(logging.INFO)
+app.logger.addHandler(file_handler)
+logging.getLogger('web_interface').addHandler(file_handler)
 
 def run_web_server(host='0.0.0.0', port=5000, debug=False):
     """Run the Flask web server."""
     app.run(host=host, port=port, debug=debug)
+
+# Add a background task to periodically reload verification data
+def reload_verifications_periodically():
+    """Periodically reload verification data from file"""
+    while True:
+        try:
+            # Load latest verifications every 5 seconds
+            VerificationManager._load_verifications()
+            time.sleep(5)
+        except Exception as e:
+            logger.error(f"Error in verification reload thread: {e}")
+            time.sleep(10)  # Wait longer if there was an error
+
+# Start the background thread when the app starts
+verification_thread = threading.Thread(target=reload_verifications_periodically, daemon=True)
+verification_thread.start()
+
+# Add this route to handle notifications
+@app.route('/api/admin/notifications', methods=['POST'])
+def api_notifications():
+    """API endpoint to receive notifications"""
+    try:
+        data = request.json
+        if not data or 'message' not in data:
+            return jsonify({"success": False, "error": "No message provided"}), 400
+        
+        message = data['message']
+        message_type = data.get('type', 'info')
+        
+        # Store notification in a file for display in the admin panel
+        notification_file = os.path.join(app.static_folder, 'notifications.json')
+        
+        # Load existing notifications
+        notifications = []
+        if os.path.exists(notification_file):
+            try:
+                with open(notification_file, 'r') as f:
+                    notifications = json.load(f)
+            except:
+                pass
+        
+        # Add new notification
+        notifications.append({
+            'timestamp': datetime.now().isoformat(),
+            'message': message,
+            'type': message_type,
+            'read': False
+        })
+        
+        # Keep only the latest 50 notifications
+        notifications = notifications[-50:]
+        
+        # Save notifications
+        with open(notification_file, 'w') as f:
+            json.dump(notifications, f)
+        
+        return jsonify({"success": True})
+    
+    except Exception as e:
+        logger.error(f"Error handling notification: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == '__main__':
     run_web_server(debug=True)

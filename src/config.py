@@ -5,9 +5,12 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from supabase import create_client
 import logging
+from pathlib import Path
 
-# Load environment variables from .env file
-load_dotenv()
+# Try to load .env file at startup
+env_path = Path(__file__).parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
 
 logger = logging.getLogger('config')
 
@@ -20,11 +23,18 @@ class Config:
     TWITTER_PASSWORD = os.getenv('TWITTER_PASSWORD')
     TWITTER_EMAIL = os.getenv('TWITTER_EMAIL')
 
-    # OpenAI Client with Gemini configuration
-    openai_client = OpenAI(
-        api_key=os.getenv('GEMINI_API_KEY'),
-        base_url=os.getenv('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/')
-    )
+    # Safely get OPENAI_API_KEY with fallback
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    
+    # Initialize OpenAI client only if we have a key
+    if OPENAI_API_KEY:
+        openai_client = OpenAI(
+            api_key=OPENAI_API_KEY,
+            base_url=os.getenv('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        )
+    else:
+        print("Warning: No OpenAI API key found, functionality may be limited")
+        openai_client = None
 
     # Add these lines for Gemini configuration
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
@@ -89,7 +99,4 @@ class Config:
     # Telegram Configuration
     TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
     TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '231399891')  # Default chat ID with env override capability
-    
-    # Add to Config class
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
     

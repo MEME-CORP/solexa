@@ -1,4 +1,4 @@
-"""
+1"""
 Web Interface Module for Multi-Platform AI Bot
 """
 

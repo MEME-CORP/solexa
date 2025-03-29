@@ -1,0 +1,73 @@
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CHROME_BIN=/usr/bin/google-chrome \
+    CHROMEDRIVER_DIR=/usr/local/share/chrome_driver \
+    CHROMEDRIVER_PATH=/usr/local/share/chrome_driver/chromedriver \
+    DOCKER_ENV=true \
+    LOGLEVEL=INFO \
+    URLLIB3_CONNECTIONPOOL_SIZE=20 \
+    PYTHONWARNINGS="ignore:Connection pool is full" \
+    PYTHONPATH=/app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    unzip \
+    xvfb \
+    curl \
+    netcat-traditional \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create directory for chrome driver
+RUN mkdir -p $CHROMEDRIVER_DIR
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create chromedriver directories with proper permissions
+RUN mkdir -p /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller/134 \
+    && chmod -R 777 /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
+
+# Copy the rest of the application
+COPY . .
+
+# Create required directories with proper permissions
+RUN mkdir -p /app/logs \
+    && mkdir -p /tmp/chromedriver \
+    && chmod -R 777 /app/logs \
+    && chmod -R 777 /tmp/chromedriver
+
+# Add the improved entrypoint script
+COPY .docker-entrypoint.sh /app/.docker-entrypoint.sh
+RUN chmod +x /app/.docker-entrypoint.sh
+
+# Create a non-root user and set proper permissions
+RUN useradd -m appuser \
+    && chown -R appuser:appuser /app \
+    && chown -R appuser:appuser $CHROMEDRIVER_DIR \
+    && chown -R appuser:appuser /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller \
+    && chmod -R 777 /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
+
+USER appuser
+
+# Use the entrypoint script - now using main.py instead of direct module
+ENTRYPOINT ["/app/.docker-entrypoint.sh"]
+CMD ["python", "main.py", "--bots", "twitter"] 

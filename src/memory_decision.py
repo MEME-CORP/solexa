@@ -26,10 +26,46 @@ def load_yaml_prompt(filename):
 
 class MemoryDecision:
     def __init__(self):
-        self.client = OpenAI(
-            api_key=Config.GLHF_API_KEY,
-            base_url=Config.OPENAI_BASE_URL
-        )
+        # Try to get the API key from the environment first
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        # If not available, try to read directly from .env file
+        if not openai_api_key:
+            try:
+                # Look for .env in multiple locations
+                env_paths = [
+                    os.path.join(os.getcwd(), '.env'),
+                    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'),
+                    '/app/.env'
+                ]
+                
+                for env_path in env_paths:
+                    if os.path.exists(env_path):
+                        print(f"Found .env file at {env_path}")
+                        with open(env_path, 'r') as f:
+                            for line in f:
+                                if line.strip() and not line.startswith('#'):
+                                    key, value = line.strip().split('=', 1)
+                                    if key == 'OPENAI_API_KEY':
+                                        openai_api_key = value
+                                        os.environ['OPENAI_API_KEY'] = value  # Set for future use
+                                        print("Successfully loaded OPENAI_API_KEY from .env file")
+                                        break
+                        if openai_api_key:
+                            break
+            except Exception as e:
+                print(f"Error loading .env file: {e}")
+        
+        # If we have an API key, initialize the client
+        if openai_api_key:
+            self.client = OpenAI(
+                api_key=openai_api_key,
+                base_url=os.getenv('GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+            )
+        else:
+            # Fallback for development/testing without breaking
+            print("WARNING: No OpenAI API key found. Using dummy client.")
+            self.client = None  # Or implement a dummy client if needed
         self.db = DatabaseService()
         
         # Load prompt from YAML file

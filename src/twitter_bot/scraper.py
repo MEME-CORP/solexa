@@ -187,14 +187,7 @@ class Scraper:
             return False
 
     def handle_verification_screen(self, timeout_minutes=30):
-        """Handle the verification screen by notifying admin and waiting for code entry
-        
-        Args:
-            timeout_minutes: Maximum time to wait for verification in minutes
-            
-        Returns:
-            bool: True if verification was successful, False otherwise
-        """
+        """Handle the verification screen by notifying admin and waiting for code entry"""
         try:
             if not self.is_verification_screen():
                 return True
@@ -288,17 +281,59 @@ class Scraper:
                 driver=self.driver
             )
             
-            # Broadcast notification if AnnouncementBroadcaster is available
+            # Try to broadcast notification (modified to be more resilient)
             try:
-                from src.announcement_broadcaster import AnnouncementBroadcaster
-                verification_url = os.getenv("ADMIN_BASE_URL", "http://localhost:5000")
-                verification_url = f"{verification_url}/admin/verification/{verification_id}"
+                # Get admin URL
+                admin_base_url = os.getenv("ADMIN_BASE_URL", "http://localhost:5000")
                 
-                AnnouncementBroadcaster.broadcast_urgent_message(
-                    f"URGENT: Twitter verification code required. Access verification panel at: {verification_url}"
-                )
+                # For Docker environment, use the service name
+                if os.environ.get("DOCKER_ENV") == "true":
+                    admin_base_url = "http://web-interface:5000"
+                    
+                verification_url = f"{admin_base_url}/admin/verification/{verification_id}"
+                
+                # Direct HTTP call instead of using AnnouncementBroadcaster
+                try:
+                    import requests
+                    from requests.adapters import HTTPAdapter
+                    from urllib3.util.retry import Retry
+                    
+                    # Setup a retry strategy with backoff
+                    retry_strategy = Retry(
+                        total=3,
+                        backoff_factor=1,
+                        status_forcelist=[429, 500, 502, 503, 504],
+                        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+                    )
+                    
+                    # Create a session with the retry strategy
+                    session = requests.Session()
+                    adapter = HTTPAdapter(max_retries=retry_strategy)
+                    session.mount("http://", adapter)
+                    session.mount("https://", adapter)
+                    
+                    # Send notification directly to the admin interface
+                    notification_response = session.post(
+                        f"{admin_base_url}/api/admin/notifications",
+                        json={
+                            "message": f"URGENT: Twitter verification code required. Access verification panel at: {verification_url}",
+                            "type": "urgent"
+                        },
+                        timeout=5  # Add timeout to prevent hanging
+                    )
+                    
+                    if notification_response.status_code == 200:
+                        logger.info("Notification sent successfully")
+                    else:
+                        logger.warning(f"Notification API returned status code: {notification_response.status_code}")
+                        
+                except Exception as notification_error:
+                    logger.error(f"Failed to send notification via HTTP: {notification_error}")
+                    # Continue anyway, don't fail the verification process
+                    
             except Exception as e:
-                logger.error(f"Failed to broadcast notification: {e}")
+                logger.error(f"Failed to prepare notification: {e}")
+                # Continue anyway, admin can still check the dashboard
             
             # Wait for code entry with periodic checks
             logger.warning(f"Waiting up to {timeout_minutes} minutes for verification code to be entered")
@@ -335,7 +370,12 @@ class Scraper:
     def _capture_verification_screenshot(self):
         """Capture a screenshot of the verification screen"""
         try:
-            screenshots_dir = Path(__file__).parent.parent.parent / "static" / "screenshots"
+            # Use the shared volume in Docker environments
+            if os.environ.get("DOCKER_ENV") == "true":
+                screenshots_dir = Path("/app/static/screenshots")
+            else:
+                screenshots_dir = Path(__file__).parent.parent.parent / "static" / "screenshots"
+            
             screenshots_dir.mkdir(parents=True, exist_ok=True)
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -344,7 +384,8 @@ class Scraper:
             
             if self.driver.save_screenshot(str(filepath)):
                 logger.info(f"Screenshot saved to {filepath}")
-                return str(filepath)
+                # Return a path relative to static folder for web access
+                return f"/static/screenshots/{filename}"
             else:
                 logger.error("Failed to save screenshot")
                 return None
