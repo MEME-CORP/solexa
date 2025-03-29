@@ -193,30 +193,38 @@ def post_to_twitter():
             # Create a unique user data directory for this instance
             unique_id = str(uuid.uuid4())
             user_data_dir = os.path.join(tempfile.gettempdir(), f'chrome_user_data_{unique_id}')
-            os.environ["CHROME_USER_DATA_DIR"] = user_data_dir
             
-            # Use a different remote debugging port to avoid conflicts
-            os.environ["REMOTE_DEBUGGING_PORT"] = str(9223 + hash(unique_id) % 100)
+            # Use different browser options for Docker environment
+            if os.environ.get("DOCKER_ENV") == "true":
+                # In Docker, ensure we use unique user data directory
+                os.environ["CHROME_USER_DATA_DIR"] = user_data_dir
+                # Set different debugging port to avoid conflicts
+                browser_port = 9223 + (hash(unique_id) % 100)
+                os.environ["REMOTE_DEBUGGING_PORT"] = str(browser_port)
+                
+                logger.info(f"Docker environment detected. Using user data dir: {user_data_dir}")
+                logger.info(f"Using remote debugging port: {browser_port}")
+            
+            # Force headless mode in Docker
+            if os.environ.get("DOCKER_ENV") == "true":
+                os.environ["HEADLESS_BROWSER"] = "true"
             
             initialization_success = twitter_service.initialize(proxy_url=os.getenv("PROXY_URL"))
             
             if not initialization_success:
-                # Clean up the temporary directory if initialization fails
-                try:
-                    import shutil
-                    shutil.rmtree(user_data_dir, ignore_errors=True)
-                except Exception as e:
-                    logger.warning(f"Failed to clean up user data directory: {e}")
+                # Log more details about the failure
+                logger.error(f"Failed to initialize Twitter service. Chrome data dir: {user_data_dir}")
                 
                 # If the service has a scraper but initialization failed, check for verification
-                if twitter_service.scraper and twitter_service.scraper.is_verification_screen():
-                    logger.warning("Twitter verification required")
-                    verification_success = twitter_service.scraper.handle_verification_screen()
-                    if not verification_success:
-                        return jsonify({
-                            "success": False, 
-                            "error": "Twitter verification required. Please check email for verification code."
-                        }), 500
+                if twitter_service.scraper and twitter_service.scraper.driver:
+                    if twitter_service.scraper.is_verification_screen():
+                        logger.warning("Twitter verification required")
+                        verification_success = twitter_service.scraper.handle_verification_screen()
+                        if not verification_success:
+                            return jsonify({
+                                "success": False, 
+                                "error": "Twitter verification required. Please check email for verification code."
+                            }), 500
                 else:
                     return jsonify({
                         "success": False, 

@@ -17,6 +17,7 @@ services:
     volumes:
       - shared-storage:/app/static
       - logs-volume:/app/logs
+      - chrome-data:/tmp/chrome_user_data
     restart: unless-stopped
 
   web-interface:
@@ -36,8 +37,10 @@ services:
     volumes:
       - shared-storage:/app/static
       - logs-volume:/app/logs
+      - chrome-data:/tmp/chrome_user_data
     restart: unless-stopped
 
 volumes:
   shared-storage:
-  logs-volume: 
+  logs-volume:
+  chrome-data: 

@@ -9,7 +9,9 @@ ENV PYTHONUNBUFFERED=1 \
     DOCKER_ENV=true \
     LOGLEVEL=INFO \
     URLLIB3_CONNECTIONPOOL_SIZE=20 \
-    PYTHONWARNINGS="ignore:Connection pool is full"
+    PYTHONWARNINGS="ignore:Connection pool is full" \
+    HEADLESS_BROWSER=true \
+    CHROME_NO_SANDBOX=true
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -38,7 +40,7 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
-# Create chromedriver directories with proper permissions
+# Create directories with proper permissions
 RUN mkdir -p /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller/134 \
     && chmod -R 777 /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
 
@@ -49,9 +51,11 @@ COPY . .
 RUN mkdir -p /app/internal/screenshots \
     && mkdir -p /app/internal/logs \
     && mkdir -p /app/internal/chromedriver \
+    && mkdir -p /tmp/chromedriver \
     && chmod -R 777 /app/internal/screenshots \
     && chmod -R 777 /app/internal/logs \
-    && chmod -R 777 /app/internal/chromedriver
+    && chmod -R 777 /app/internal/chromedriver \
+    && chmod -R 777 /tmp/chromedriver
 
 # Add web entrypoint script
 COPY .docker-web-entrypoint.sh /app/.docker-web-entrypoint.sh
@@ -65,6 +69,6 @@ RUN useradd -m appuser \
 
 USER appuser
 
-# Use the entrypoint script - now using main.py instead of gunicorn
+# Use the entrypoint script to run main.py instead of gunicorn
 ENTRYPOINT ["/app/.docker-web-entrypoint.sh"]
 CMD ["python", "main.py", "--bots", "web", "--web-host", "0.0.0.0", "--web-port", "5000"] 
