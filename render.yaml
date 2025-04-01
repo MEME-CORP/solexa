@@ -1,7 +1,3 @@
-envGroups:
-  - name: "solexa env"
-    includeAll: true
-
 services:
   - type: web
     name: solexa-web-interface
@@ -22,7 +18,6 @@ services:
         value: "UTC"
       - key: SKIP_CHMOD
         value: "true"
-      - fromGroup: solexa env
     disk:
       name: solexa-data
       mountPath: /app/static
@@ -51,7 +46,6 @@ services:
         value: "true"
       - key: ADMIN_BASE_URL
         value: "https://solexa-web-interface.onrender.com"
-      - fromGroup: solexa env
     disk:
       name: solexa-data
       mountPath: /app/static
@@ -78,7 +72,7 @@ services:
         fromEnv: GEMINI_API_KEY
       - key: GEMINI_BASE_URL
         fromEnv: GEMINI_BASE_URL
-      - fromGroup: solexa env
     dependsOn:
       - solexa-web-interface
+  
  
