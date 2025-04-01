@@ -981,12 +981,13 @@ class DatabaseService:
             
             # Skip if content indicates no news available
             no_news_patterns = [
-                "there are no new", 
+                "As of", 
                 "no new developments", 
                 "no recent news",
                 "no significant news",
                 "no notable developments",
                 "no updates available",
+                
                 "no news to report"
             ]
             
@@ -1005,12 +1006,70 @@ class DatabaseService:
             # Find all <news>...</news> blocks using regex
             news_blocks = re.findall(r'<news>(.*?)</news>', content, re.DOTALL)
             
+            # If no XML news blocks found, try Markdown format: "**News X**: **Title**" pattern
             if not news_blocks:
-                logger.warning("No news blocks found in XML content")
-                # Store as a single item if no XML structure found
+                logger.info("No XML news blocks found, trying Markdown format")
+                # Match the "**News X**:" pattern and extract content until the next news marker or end
+                markdown_blocks = re.findall(r'\*\*News \d+\*\*:\s*\*\*(.*?)\*\*(.*?)(?=\*\*News \d+\*\*:|$)', content, re.DOTALL)
+                
+                if markdown_blocks:
+                    logger.info(f"Found {len(markdown_blocks)} news items in Markdown format")
+                    
+                    # Process each Markdown news block
+                    for title_content in markdown_blocks:
+                        try:
+                            title = title_content[0].strip()
+                            description = title_content[1].strip()
+                            
+                            # Skip if title or description is empty
+                            if not title or not description:
+                                continue
+                            
+                            # Skip if indicates no news
+                            if any(pattern.lower() in title.lower() or pattern.lower() in description.lower()
+                                   for pattern in no_news_patterns):
+                                continue
+                            
+                            # Check for duplicate by title
+                            response = self.client.table('crypto_news')\
+                                .select('id')\
+                                .ilike('title', f'{title}%')\
+                                .execute()
+                            
+                            if response.data:
+                                logger.info(f"Similar title already exists in database, skipping: {title}")
+                                continue
+                            
+                            # Use existing citations if available
+                            sources = news_data.get("citations", [])
+                            
+                            # Insert the individual news item
+                            news_item = {
+                                'content': description,
+                                'title': title,
+                                'category': category,
+                                'summary': description[:200] + "..." if len(description) > 200 else description,
+                                'sources': sources,
+                                'retrieved_at': datetime.now().isoformat(),
+                                'used': False
+                            }
+                            
+                            response = self.client.table('crypto_news').insert(news_item).execute()
+                            
+                            if response.data:
+                                stored_count += 1
+                                logger.info(f"Stored Markdown news item: {title}, category: {category}")
+                            
+                        except Exception as e:
+                            logger.error(f"Error processing Markdown news block: {e}")
+                            # Continue with next news block
+            
+            if not news_blocks and not markdown_blocks:
+                logger.warning("No news blocks found in XML or Markdown format")
+                # Store as a single item if no structure found
                 return self._store_single_news_item(news_data)
             
-            # Process each news block separately
+            # Process each XML news block if found
             for news_block in news_blocks:
                 try:
                     # Wrap in a root element to make it valid XML

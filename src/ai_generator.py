@@ -14,6 +14,7 @@ import yaml
 from pathlib import Path
 from src.memory_decision import MemoryDecision
 import time
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -750,19 +751,23 @@ class AIGenerator:
         
         # Define different topics to ensure variety if no specific topic provided
         topic_categories = [
-            "Latest regulatory developments in cryptocurrency",
-            "Recent market movements in Bitcoin and Ethereum",
-            "Corporate adoption of cryptocurrency news",
-            "New cryptocurrency technology developments",
-            "Government policy changes regarding cryptocurrency",
-            "Cryptocurrency exchange updates and news"
+            "regulatory developments in cryptocurrency",
+            "market movements in cryptocurrency",
+            "corporate adoption of cryptocurrency",
+            "cryptocurrency technology innovations", 
+            "cryptocurrency policy changes",
+            "defi news"
         ]
         
         # If no specific topic provided, choose a random category to ensure variety
         if not specific_topic:
             specific_topic = random.choice(topic_categories)
         
-        query = f"retrieve {specific_topic} for today with XML tags. In this Format: News 1 [], News2 [], etc"
+        # Get current date for more specific querying
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        # Include the actual date in the query to ensure current news
+        query = f"retrieve {specific_topic} for {today} (today's date) with XML tags. Only include news from the last 24 hours. Format as: News 1 [], News2 [], etc"
         
         logger.info(f"Making web search request with query: {query}")
         
@@ -863,7 +868,8 @@ class AIGenerator:
             "market movements in cryptocurrency",
             "corporate adoption of cryptocurrency",
             "cryptocurrency technology innovations", 
-            "cryptocurrency policy changes"
+            "cryptocurrency policy changes",
+            "defi news"
         ]
         
         stored_count = 0
