@@ -18,8 +18,10 @@ services:
         value: "UTC"
       - key: SKIP_CHMOD
         value: "true"
+      - key: VERIFICATION_FILE_PATH
+        value: "/app/static/verifications.json"
     disk:
-      name: solexa-data
+      name: solexa-shared-data
       mountPath: /app/static
       sizeGB: 1
 
@@ -46,8 +48,10 @@ services:
         value: "true"
       - key: ADMIN_BASE_URL
         value: "https://solexa-web-interface.onrender.com"
+      - key: VERIFICATION_FILE_PATH
+        value: "/app/static/verifications.json"
     disk:
-      name: solexa-data
+      name: solexa-shared-data
       mountPath: /app/static
       sizeGB: 1
 
@@ -72,6 +76,10 @@ services:
         fromEnv: GEMINI_API_KEY
       - key: GEMINI_BASE_URL
         fromEnv: GEMINI_BASE_URL
+    disk:
+      name: solexa-shared-data
+      mountPath: /app/static
+      sizeGB: 1
     dependsOn:
       - solexa-web-interface
   
