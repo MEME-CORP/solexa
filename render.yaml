@@ -1,0 +1,70 @@
+services:
+  - type: web
+    name: solexa-web-interface
+    env: docker
+    dockerfilePath: Dockerfile.web
+    plan: starter
+    numInstances: 1
+    envVars:
+      - key: HEADLESS_BROWSER
+        value: "true"
+      - key: DOCKER_ENV
+        value: "true"
+      - key: LOGLEVEL
+        value: "INFO"
+      - key: PYTHONPATH
+        value: "/app"
+      - key: TZ
+        value: "UTC"
+      - key: SKIP_CHMOD
+        value: "true"
+    disk:
+      name: solexa-data
+      mountPath: /app/static
+      sizeGB: 1
+
+  - type: worker
+    name: solexa-twitter-bot
+    env: docker
+    dockerfilePath: Dockerfile.twitter
+    plan: starter
+    numInstances: 1
+    envVars:
+      - key: HEADLESS_BROWSER
+        value: "true"
+      - key: DOCKER_ENV
+        value: "true"
+      - key: DOCKER_DEBUG
+        value: "true"
+      - key: LOGLEVEL
+        value: "INFO"
+      - key: PYTHONPATH
+        value: "/app"
+      - key: TZ
+        value: "UTC"
+      - key: SKIP_CHMOD
+        value: "true"
+      - key: ADMIN_BASE_URL
+        value: "https://solexa-web-interface.onrender.com"
+    disk:
+      name: solexa-data
+      mountPath: /app/static
+      sizeGB: 1
+
+  - type: worker
+    name: solexa-telegram-bot
+    env: docker
+    dockerfilePath: Dockerfile.telegram
+    plan: starter
+    numInstances: 1
+    envVars:
+      - key: DOCKER_ENV
+        value: "true"
+      - key: LOGLEVEL
+        value: "INFO"
+      - key: PYTHONPATH
+        value: "/app"
+      - key: TZ
+        value: "UTC"
+    dependsOn:
+      - solexa-web-interface 

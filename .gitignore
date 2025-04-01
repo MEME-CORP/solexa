@@ -58,3 +58,12 @@ htmlcov/
 .tox/
 tests/+
 static/screenshots/
+
+# Project specific
+*.yaml
+!src/prompts_config/*.yaml
+!render.yaml
+twitter_session.json
+data/processed_tweets.txt
+tests/ 
+scripts0.2/
