@@ -762,7 +762,7 @@ class AIGenerator:
         if not specific_topic:
             specific_topic = random.choice(topic_categories)
         
-        query = f"What are the latest {specific_topic} today? Format with clear section headers."
+        query = f"retrieve {specific_topic} for today with XML tags. In this Format: News 1 [], News2 [], etc"
         
         logger.info(f"Making web search request with query: {query}")
         
@@ -804,7 +804,8 @@ class AIGenerator:
             
             return {
                 "content": news_content,
-                "citations": citations
+                "citations": citations,
+                "category": specific_topic  # Add the category to the returned data
             }
         except Exception as e:
             logger.error(f"Error fetching crypto news: {e}")
@@ -946,7 +947,7 @@ class AIGenerator:
             
             if count == 0:
                 logger.info("No crypto news found in database, performing initial fetch")
-                self.fetch_and_store_crypto_news(10)  # Get 10 news items initially
+                self.fetch_and_store_crypto_news(5)  # Changed from 10 to 5 news items initially
             else:
                 logger.info(f"Found {count} unused crypto news items in database")
                 

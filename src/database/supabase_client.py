@@ -8,6 +8,9 @@ from typing import List, Dict, Any, Union
 import os
 import requests
 import random
+import re
+import xml.etree.ElementTree as ET
+from io import StringIO
 
 logger = logging.getLogger('database')
 
@@ -966,7 +969,7 @@ class DatabaseService:
             return False
 
     def store_crypto_news(self, news_data):
-        """Store cryptocurrency news in the database"""
+        """Store cryptocurrency news in the database - each news item separately"""
         try:
             # Extract content
             content = news_data.get("content", "")
@@ -976,16 +979,155 @@ class DatabaseService:
                 logger.warning("News content too short, skipping")
                 return False
             
-            # Check for duplicates by comparing first 100 characters
-            content_start = content[:100]
-            response = self.client.table('crypto_news')\
-                .select('id')\
-                .ilike('content', f'{content_start}%')\
-                .execute()
+            # Skip if content indicates no news available
+            no_news_patterns = [
+                "there are no new", 
+                "no new developments", 
+                "no recent news",
+                "no significant news",
+                "no notable developments",
+                "no updates available",
+                "no news to report"
+            ]
             
-            if response.data:
-                logger.info(f"Similar content already exists in database, skipping")
-                return False
+            for pattern in no_news_patterns:
+                if pattern.lower() in content.lower():
+                    logger.info(f"Content indicates no news available: '{pattern}' found in content")
+                    return False
+            
+            # Get category from input data
+            category = news_data.get("category", "General")
+            
+            # Parse XML content to extract individual news items
+            # Count how many items were stored
+            stored_count = 0
+            
+            # Find all <news>...</news> blocks using regex
+            news_blocks = re.findall(r'<news>(.*?)</news>', content, re.DOTALL)
+            
+            if not news_blocks:
+                logger.warning("No news blocks found in XML content")
+                # Store as a single item if no XML structure found
+                return self._store_single_news_item(news_data)
+            
+            # Process each news block separately
+            for news_block in news_blocks:
+                try:
+                    # Wrap in a root element to make it valid XML
+                    xml_content = f"<root><news>{news_block}</news></root>"
+                    
+                    # Parse the XML
+                    root = ET.fromstring(xml_content)
+                    news = root.find('news')
+                    
+                    if news is None:
+                        continue
+                    
+                    # Extract news components
+                    title_elem = news.find('title')
+                    description_elem = news.find('description')
+                    source_elem = news.find('source')
+                    url_elem = news.find('url')
+                    date_elem = news.find('date')
+                    
+                    title = title_elem.text if title_elem is not None else ""
+                    description = description_elem.text if description_elem is not None else ""
+                    source = source_elem.text if source_elem is not None else ""
+                    url = url_elem.text if url_elem is not None else ""
+                    date = date_elem.text if date_elem is not None else ""
+                    
+                    # Skip if no meaningful content
+                    if not title and not description:
+                        continue
+                    
+                    # Check if this item indicates no news
+                    skip_item = False
+                    for pattern in no_news_patterns:
+                        if (pattern.lower() in title.lower() or 
+                            pattern.lower() in description.lower()):
+                            logger.info(f"Skipping news item with 'no news' pattern: {title}")
+                            skip_item = True
+                            break
+                            
+                    if skip_item:
+                        continue
+                    
+                    # Check for duplicate by title
+                    response = self.client.table('crypto_news')\
+                        .select('id')\
+                        .ilike('title', f'{title}%')\
+                        .execute()
+                    
+                    if response.data:
+                        logger.info(f"Similar title already exists in database, skipping: {title}")
+                        continue
+                    
+                    # Create citation/source entry
+                    sources = []
+                    if source and url:
+                        sources.append({
+                            "title": source,
+                            "url": url
+                        })
+                        
+                    # Use existing citations if available
+                    if not sources and news_data.get("citations"):
+                        sources = news_data.get("citations")
+                    
+                    # Insert the individual news item
+                    news_item = {
+                        'content': description,
+                        'title': title,
+                        'category': category,
+                        'summary': description[:200] + "..." if len(description) > 200 else description,
+                        'sources': sources,
+                        'retrieved_at': datetime.now().isoformat(),
+                        'used': False
+                    }
+                    
+                    response = self.client.table('crypto_news').insert(news_item).execute()
+                    
+                    if response.data:
+                        stored_count += 1
+                        logger.info(f"Stored news item: {title}, category: {category}")
+                    
+                except Exception as e:
+                    logger.error(f"Error processing news block: {e}")
+                    # Continue with next news block
+            
+            if stored_count > 0:
+                logger.info(f"Successfully stored {stored_count} news items")
+                return True
+            else:
+                # Fallback to storing as a single item if no news blocks were successfully processed
+                logger.warning("Falling back to storing as a single news item")
+                return self._store_single_news_item(news_data)
+            
+        except Exception as e:
+            logger.error(f"Error storing crypto news: {e}")
+            return False
+
+    def _store_single_news_item(self, news_data):
+        """Store as a single news item (fallback method)"""
+        try:
+            content = news_data.get("content", "")
+            category = news_data.get("category", "General")
+            
+            # Skip if content indicates no news available
+            no_news_patterns = [
+                "there are no new", 
+                "no new developments", 
+                "no recent news",
+                "no significant news",
+                "no notable developments",
+                "no updates available",
+                "no news to report"
+            ]
+            
+            for pattern in no_news_patterns:
+                if pattern.lower() in content.lower():
+                    logger.info(f"Single item content indicates no news available: '{pattern}' found in content")
+                    return False
             
             # Process citations
             sources = []
@@ -995,39 +1137,36 @@ class DatabaseService:
                     "url": citation.get("url", "")
                 })
             
-            # Extract categories from content if possible
-            categories = []
-            if "**Regulatory" in content:
-                categories.append("Regulatory")
-            if "**Corporate" in content:
-                categories.append("Corporate")
-            if "**Market" in content:
-                categories.append("Market")
-            
             # Extract a simple title if possible
             title = ""
             lines = content.split("\n")
             for line in lines:
-                if line.strip() and not line.startswith("**") and not line.startswith("-"):
+                if line.strip() and not line.startswith("**") and not line.startswith("-") and not line.startswith("<"):
                     title = line.strip()
                     break
+                
+            # Check if title indicates no news
+            for pattern in no_news_patterns:
+                if title and pattern.lower() in title.lower():
+                    logger.info(f"Title indicates no news available: '{pattern}' found in title")
+                    return False
             
             # Insert the news item
             response = self.client.table('crypto_news').insert({
                 'content': content,
-                'title': title,
-                'category': ", ".join(categories) if categories else "General",
+                'title': title or "Cryptocurrency News Update",
+                'category': category,
                 'summary': content[:200] + "..." if len(content) > 200 else content,
                 'sources': sources,
                 'retrieved_at': datetime.now().isoformat(),
                 'used': False
             }).execute()
             
-            logger.info(f"Stored new crypto news item with title: {title[:50]}...")
+            logger.info(f"Stored single news item with category: {category}")
             return True if response.data else False
             
         except Exception as e:
-            logger.error(f"Error storing crypto news: {e}")
+            logger.error(f"Error storing single news item: {e}")
             return False
 
     def get_unused_crypto_news(self):
