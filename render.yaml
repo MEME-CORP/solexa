@@ -1,5 +1,5 @@
 envGroups:
-  - name: solexa-env
+  - name: "solexa env"
     includeAll: true
 
 services:
@@ -27,7 +27,7 @@ services:
       mountPath: /app/static
       sizeGB: 1
     envGroups:
-      - solexa-env
+      - "solexa env"
 
   - type: worker
     name: solexa-twitter-bot
@@ -57,7 +57,7 @@ services:
       mountPath: /app/static
       sizeGB: 1
     envGroups:
-      - solexa-env
+      - "solexa env"
 
   - type: worker
     name: solexa-telegram-bot
@@ -83,5 +83,5 @@ services:
     dependsOn:
       - solexa-web-interface
     envGroups:
-      - solexa-env
+      - "solexa env"
  
