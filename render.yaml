@@ -1,3 +1,7 @@
+envGroups:
+  - name: solexa-env
+    includeAll: true
+
 services:
   - type: web
     name: solexa-web-interface
@@ -22,6 +26,8 @@ services:
       name: solexa-data
       mountPath: /app/static
       sizeGB: 1
+    envGroups:
+      - solexa-env
 
   - type: worker
     name: solexa-twitter-bot
@@ -50,6 +56,8 @@ services:
       name: solexa-data
       mountPath: /app/static
       sizeGB: 1
+    envGroups:
+      - solexa-env
 
   - type: worker
     name: solexa-telegram-bot
@@ -66,4 +74,14 @@ services:
         value: "/app"
       - key: TZ
         value: "UTC"
+      - key: OPENAI_API_KEY
+        fromEnv: OPENAI_API_KEY
+      - key: GEMINI_API_KEY
+        fromEnv: GEMINI_API_KEY
+      - key: GEMINI_BASE_URL
+        fromEnv: GEMINI_BASE_URL
+    dependsOn:
+      - solexa-web-interface
+    envGroups:
+      - solexa-env
  
