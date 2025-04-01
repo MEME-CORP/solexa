@@ -76,11 +76,11 @@ services:
         fromEnv: GEMINI_API_KEY
       - key: GEMINI_BASE_URL
         fromEnv: GEMINI_BASE_URL
+      - key: ADMIN_BASE_URL
+        value: "https://solexa-web-interface.onrender.com"
     disk:
       name: solexa-shared-data
       mountPath: /app/static
       sizeGB: 1
-    dependsOn:
-      - solexa-web-interface
   
  
