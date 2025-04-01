@@ -70,12 +70,6 @@ services:
         value: "/app"
       - key: TZ
         value: "UTC"
-      - key: OPENAI_API_KEY
-        fromEnv: OPENAI_API_KEY
-      - key: GEMINI_API_KEY
-        fromEnv: GEMINI_API_KEY
-      - key: GEMINI_BASE_URL
-        fromEnv: GEMINI_BASE_URL
       - key: ADMIN_BASE_URL
         value: "https://solexa-web-interface.onrender.com"
     disk:
