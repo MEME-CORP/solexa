@@ -66,5 +66,4 @@ services:
         value: "/app"
       - key: TZ
         value: "UTC"
-    dependsOn:
-      - solexa-web-interface 
+ 
