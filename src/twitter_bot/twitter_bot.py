@@ -85,6 +85,13 @@ class TwitterBot:
                 from src.announcement_broadcaster import AnnouncementBroadcaster
                 AnnouncementBroadcaster.set_twitter_driver(self.service.driver)
                 
+            # Initialize crypto news database if we have an AI generator
+            if self.generator:
+                try:
+                    self.generator.initialize_crypto_news()
+                except Exception as e:
+                    logger.error(f"Failed to initialize crypto news: {e}")
+            
             # Verify all components
             if not all([self.generator, self.service.is_initialized()]):
                 logger.error("Not all components initialized properly")
@@ -213,12 +220,12 @@ class TwitterBot:
             
             if use_crypto_news:
                 try:
-                    logger.info("Fetching crypto news for tweet generation")
-                    # Fetch crypto news
-                    news_data = self.generator.fetch_crypto_news()
+                    logger.info("Getting stored crypto news for tweet generation")
+                    # Get news from database instead of direct fetching
+                    news_data = self.generator.get_crypto_news_for_tweet()
                     
                     # Verify we got valid news content
-                    if news_data and news_data.get("content") and news_data.get("content") != "Unable to fetch latest crypto news at this time.":
+                    if news_data and news_data.get("content"):
                         # Transform the news into Solexa's style
                         content = self.generator.transform_crypto_news(news_data)
                         

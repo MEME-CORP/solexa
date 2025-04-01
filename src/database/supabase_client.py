@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Union
 import os
 import requests
+import random
 
 logger = logging.getLogger('database')
 
@@ -963,5 +964,122 @@ class DatabaseService:
             logger.error(f"Error inserting memory: {e}")
             logger.exception("Full traceback:")
             return False
+
+    def store_crypto_news(self, news_data):
+        """Store cryptocurrency news in the database"""
+        try:
+            # Extract content
+            content = news_data.get("content", "")
+            
+            # Skip if content is too short
+            if len(content) < 50:
+                logger.warning("News content too short, skipping")
+                return False
+            
+            # Check for duplicates by comparing first 100 characters
+            content_start = content[:100]
+            response = self.client.table('crypto_news')\
+                .select('id')\
+                .ilike('content', f'{content_start}%')\
+                .execute()
+            
+            if response.data:
+                logger.info(f"Similar content already exists in database, skipping")
+                return False
+            
+            # Process citations
+            sources = []
+            for citation in news_data.get("citations", []):
+                sources.append({
+                    "title": citation.get("title", ""),
+                    "url": citation.get("url", "")
+                })
+            
+            # Extract categories from content if possible
+            categories = []
+            if "**Regulatory" in content:
+                categories.append("Regulatory")
+            if "**Corporate" in content:
+                categories.append("Corporate")
+            if "**Market" in content:
+                categories.append("Market")
+            
+            # Extract a simple title if possible
+            title = ""
+            lines = content.split("\n")
+            for line in lines:
+                if line.strip() and not line.startswith("**") and not line.startswith("-"):
+                    title = line.strip()
+                    break
+            
+            # Insert the news item
+            response = self.client.table('crypto_news').insert({
+                'content': content,
+                'title': title,
+                'category': ", ".join(categories) if categories else "General",
+                'summary': content[:200] + "..." if len(content) > 200 else content,
+                'sources': sources,
+                'retrieved_at': datetime.now().isoformat(),
+                'used': False
+            }).execute()
+            
+            logger.info(f"Stored new crypto news item with title: {title[:50]}...")
+            return True if response.data else False
+            
+        except Exception as e:
+            logger.error(f"Error storing crypto news: {e}")
+            return False
+
+    def get_unused_crypto_news(self):
+        """Get a random unused news item from the database"""
+        try:
+            response = self.client.table('crypto_news')\
+                .select('*')\
+                .eq('used', False)\
+                .execute()
+            
+            if not response.data:
+                logger.info("No unused crypto news found")
+                return None
+            
+            # Select a random news item
+            news_item = random.choice(response.data)
+            logger.info(f"Retrieved unused crypto news: {news_item.get('title', '')[:50]}...")
+            return news_item
+            
+        except Exception as e:
+            logger.error(f"Error getting unused crypto news: {e}")
+            return None
+
+    def mark_crypto_news_as_used(self, news_id):
+        """Mark a news item as used"""
+        try:
+            response = self.client.table('crypto_news')\
+                .update({'used': True, 'used_at': datetime.now().isoformat()})\
+                .eq('id', news_id)\
+                .execute()
+            
+            logger.info(f"Marked crypto news {news_id} as used")
+            return True if response.data else False
+            
+        except Exception as e:
+            logger.error(f"Error marking crypto news as used: {e}")
+            return False
+
+    def check_unused_crypto_news_count(self):
+        """Check if there are any unused news items left"""
+        try:
+            response = self.client.table('crypto_news')\
+                .select('id')\
+                .eq('used', False)\
+                .execute()
+            
+            count = len(response.data)
+            logger.info(f"Found {count} unused crypto news items")
+            return count
+            
+        except Exception as e:
+            logger.error(f"Error checking unused crypto news count: {e}")
+            return 0
 
   

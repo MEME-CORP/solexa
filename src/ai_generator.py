@@ -13,6 +13,7 @@ from src.database.supabase_client import DatabaseService
 import yaml
 from pathlib import Path
 from src.memory_decision import MemoryDecision
+import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -744,8 +745,26 @@ class AIGenerator:
             }
 
     def fetch_crypto_news(self, specific_topic=None):
-        """Fetch the latest crypto news using GPT-4o mini Search Preview model"""
-        logger.info("Fetching latest crypto news via web search")
+        """Fetch latest cryptocurrency news from web search or specific topic"""
+        logger.info(f"Fetching latest crypto news via web search{' for topic: ' + specific_topic if specific_topic else ''}")
+        
+        # Define different topics to ensure variety if no specific topic provided
+        topic_categories = [
+            "Latest regulatory developments in cryptocurrency",
+            "Recent market movements in Bitcoin and Ethereum",
+            "Corporate adoption of cryptocurrency news",
+            "New cryptocurrency technology developments",
+            "Government policy changes regarding cryptocurrency",
+            "Cryptocurrency exchange updates and news"
+        ]
+        
+        # If no specific topic provided, choose a random category to ensure variety
+        if not specific_topic:
+            specific_topic = random.choice(topic_categories)
+        
+        query = f"What are the latest {specific_topic} today? Format with clear section headers."
+        
+        logger.info(f"Making web search request with query: {query}")
         
         try:
             # Initialize OpenAI client for search model
@@ -753,13 +772,6 @@ class AIGenerator:
                 api_key=Config.OPENAI_API_KEY,
                 base_url="https://api.openai.com/v1"  # Use standard OpenAI API endpoint
             )
-            
-            # Prepare search query
-            query = "What are the latest important cryptocurrency news or market updates today?"
-            if specific_topic:
-                query = f"What are the latest cryptocurrency news about {specific_topic} today?"
-            
-            logger.info(f"Making web search request with query: {query}")
             
             # Make request to GPT-4o mini search preview with correct parameter format
             completion = search_client.chat.completions.create(
@@ -839,4 +851,105 @@ class AIGenerator:
             logger.error(f"Error transforming crypto news: {e}")
             logger.error(traceback.format_exc())
             return "tried to scope some crypto buzz but my circuits are fried. back in a tick, yeah?"
+
+    def fetch_and_store_crypto_news(self, count=5, specific_topic=None):
+        """Fetch crypto news and store in database"""
+        logger.info(f"Fetching and storing {count} crypto news items")
+        
+        # Define different topic categories to ensure variety
+        topic_categories = [
+            "regulatory developments in cryptocurrency",
+            "market movements in cryptocurrency",
+            "corporate adoption of cryptocurrency",
+            "cryptocurrency technology innovations", 
+            "cryptocurrency policy changes"
+        ]
+        
+        stored_count = 0
+        attempts = 0
+        max_attempts = count * 2  # Allow extra attempts to reach desired count
+        
+        while stored_count < count and attempts < max_attempts:
+            try:
+                # Use a different topic category for each attempt to ensure variety
+                current_topic = specific_topic
+                if not current_topic:
+                    current_topic = topic_categories[attempts % len(topic_categories)]
+                
+                # Fetch a news item with the current topic
+                news_data = self.fetch_crypto_news(current_topic)
+                
+                # Skip if no valid content
+                if not news_data or not news_data.get("content") or news_data.get("content") == "Unable to fetch latest crypto news at this time.":
+                    logger.warning("No valid news content retrieved")
+                    attempts += 1
+                    continue
+                    
+                # Store in database - will return False if duplicate
+                if self.db.store_crypto_news(news_data):
+                    stored_count += 1
+                    logger.info(f"Stored news item {stored_count}/{count} on topic: {current_topic}")
+                    # Add a small delay between requests to avoid rate limiting
+                    time.sleep(1)
+                else:
+                    logger.info("News item not stored (likely duplicate)")
+                
+                attempts += 1
+                
+            except Exception as e:
+                logger.error(f"Error fetching and storing news: {e}")
+                attempts += 1
+        
+        logger.info(f"Successfully stored {stored_count} news items after {attempts} attempts")
+        return stored_count
+
+    def get_crypto_news_for_tweet(self):
+        """Get an unused crypto news item for tweet generation"""
+        logger.info("Getting unused crypto news for tweet")
+        
+        # Check if we need to refresh the news
+        unused_count = self.db.check_unused_crypto_news_count()
+        
+        # If no unused news, fetch and store new ones
+        if unused_count == 0:
+            logger.info("No unused news available, fetching new batch")
+            stored_count = self.fetch_and_store_crypto_news(5)
+            
+            if stored_count == 0:
+                logger.warning("Could not store any new news items")
+                return None
+            
+            # Try to get a news item again
+            news_item = self.db.get_unused_crypto_news()
+        else:
+            # Get a random unused news item
+            news_item = self.db.get_unused_crypto_news()
+        
+        if not news_item:
+            logger.warning("Could not retrieve any unused news")
+            return None
+        
+        # Mark this news as used
+        self.db.mark_crypto_news_as_used(news_item['id'])
+        
+        # Return in expected format for transformation
+        return {
+            "content": news_item['content'],
+            "citations": news_item.get('sources', [])
+        }
+
+    def initialize_crypto_news(self):
+        """Check if we need to populate initial crypto news"""
+        try:
+            # Check if we have any news stored
+            count = self.db.check_unused_crypto_news_count()
+            
+            if count == 0:
+                logger.info("No crypto news found in database, performing initial fetch")
+                self.fetch_and_store_crypto_news(10)  # Get 10 news items initially
+            else:
+                logger.info(f"Found {count} unused crypto news items in database")
+                
+        except Exception as e:
+            logger.error(f"Error initializing crypto news: {e}")
 
