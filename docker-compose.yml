@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  twitter-bot:
+  solexa-unified:
     build:
       context: .
-      dockerfile: Dockerfile.twitter
+      dockerfile: Dockerfile.unified
     env_file: .env
     environment:
       - HEADLESS_BROWSER=true
@@ -14,45 +14,23 @@ services:
       - PYTHONPATH=/app
       - TZ=UTC
       - SKIP_CHMOD=true
-    volumes:
-      - shared-storage:/app/static
-      - logs-volume:/app/logs
-      - chrome-data:/tmp/chrome_user_data
-    restart: unless-stopped
-
-  web-interface:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-    env_file: .env
-    environment:
-      - FLASK_ENV=production
-      - DOCKER_ENV=true
-      - LOGLEVEL=DEBUG
-      - PYTHONPATH=/app
-      - TZ=UTC
-      - SKIP_CHMOD=true
+      - VERIFICATION_FILE_PATH=/app/static/verifications.json
+      - ADMIN_BASE_URL=http://localhost:5000
     ports:
       - "5000:5000"
     volumes:
-      - shared-storage:/app/static
+      - solexa-data:/app/static
       - logs-volume:/app/logs
       - chrome-data:/tmp/chrome_user_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     restart: unless-stopped
-
-  telegram:
-    build:
-      context: .
-      dockerfile: Dockerfile.telegram
-    volumes:
-      - ./logs:/app/logs
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      - web-interface
 
 volumes:
-  shared-storage:
+  solexa-data:
   logs-volume:
   chrome-data: 

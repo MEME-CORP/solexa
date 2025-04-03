@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "=== Starting Twitter Bot Docker Container $(date) ==="
+echo "=== Starting Unified Service Docker Container $(date) ==="
 echo "Environment: DOCKER_ENV=$DOCKER_ENV"
 echo "Log level: $LOGLEVEL"
 
@@ -11,19 +11,31 @@ if [ "$DOCKER_DEBUG" = "true" ]; then
     env | grep -v -E 'PASSWORD|API_KEY|TOKEN|SECRET' | sort
 fi
 
-# Skip chmod operations that might fail
+# Don't try to modify permissions if SKIP_CHMOD is set
 if [ "$SKIP_CHMOD" != "true" ]; then
-    # Ensure shared directories exist - but don't try to chmod them
-    mkdir -p /app/static/screenshots || true
-    mkdir -p /app/logs || true
-    mkdir -p /tmp/chromedriver || true
+    # Ensure shared directories exist with proper permissions
+    mkdir -p /app/static/screenshots
+    mkdir -p /app/logs
+    mkdir -p /tmp/chromedriver
+    mkdir -p /tmp/chrome_user_data
+    
+    # Only try to set permissions if running as root
+    if [ $(id -u) -eq 0 ]; then
+        chmod -R 777 /tmp/chromedriver
+        chmod -R 777 /tmp/chrome_user_data
+        chmod -R 777 /app/logs
+        chmod -R 777 /app/static/screenshots
+    fi
 fi
+
+# Ensure chromedriver directories exist with proper permissions
+mkdir -p /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller/134
+chmod -R 777 /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
 
 # If we need to create notifications sound file
 if [ ! -f /app/static/notification.mp3 ]; then
     echo "Creating a placeholder notification sound"
-    # This would normally be a real sound file
-    touch /app/static/notification.mp3 || true
+    touch /app/static/notification.mp3
 fi
 
 # Configure urllib3 connection pools
@@ -56,6 +68,20 @@ for logger_name in ['TwitterBot', 'TwitterService', 'Scraper', 'TweetManager', '
     logger.setLevel(logging.DEBUG)
 EOF
 
-# Run the command - this should be "python main.py --bots twitter"
-echo "Starting $@ with PYTHONPATH=$PYTHONPATH"
+# Set up Chrome options for all services
+export HEADLESS_BROWSER="true"
+export CHROME_NO_SANDBOX="true"
+export CHROME_USER_DATA_DIR="/tmp/chrome_user_data"
+
+# Print Chrome configuration
+echo "Chrome configuration:"
+echo "CHROME_BIN: $CHROME_BIN"
+echo "CHROMEDRIVER_DIR: $CHROMEDRIVER_DIR"
+echo "CHROMEDRIVER_PATH: $CHROMEDRIVER_PATH"
+echo "CHROME_USER_DATA_DIR: $CHROME_USER_DATA_DIR"
+echo "HEADLESS_BROWSER: $HEADLESS_BROWSER"
+
+echo "Unified service ready to start with command: $@"
+
+# Execute the provided command with exec to properly handle signals
 exec "$@" 

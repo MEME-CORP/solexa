@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: solexa-web-interface
+    name: solexa-unified
     env: docker
-    dockerfilePath: Dockerfile.web
-    plan: starter
+    dockerfilePath: Dockerfile.unified
+    plan: standard # Choose a plan with at least 1GB RAM
     numInstances: 1
     envVars:
       - key: HEADLESS_BROWSER
@@ -20,10 +20,20 @@ services:
         value: "true"
       - key: VERIFICATION_FILE_PATH
         value: "/app/static/verifications.json"
+      - key: ADMIN_BASE_URL
+        sync: false # This will be automatically set based on the service URL
+      # Add your other environment variables here (API keys, etc.)
     disk:
-      name: solexa-shared-data
+      name: solexa-data
       mountPath: /app/static
       sizeGB: 1
+    healthCheckPath: /health
+    ports:
+      - port: 5000
+        protocol: TCP
+    scaling:
+      minInstances: 1
+      maxInstances: 1 # Keep to 1 instance since we're running all bots in one container
 
   - type: worker
     name: solexa-twitter-bot
