@@ -1,41 +1,12 @@
+# IMPORTANT: This file should REPLACE all existing content in render.yaml
+# Delete everything in render.yaml and replace with this content only
+
 services:
   - type: web
     name: solexa-unified
     env: docker
     dockerfilePath: Dockerfile.unified
-    plan: standard # Choose a plan with at least 1GB RAM
-    numInstances: 1
-    envVars:
-      - key: HEADLESS_BROWSER
-        value: "true"
-      - key: DOCKER_ENV
-        value: "true"
-      - key: LOGLEVEL
-        value: "INFO"
-      - key: PYTHONPATH
-        value: "/app"
-      - key: TZ
-        value: "UTC"
-      - key: SKIP_CHMOD
-        value: "true"
-      - key: VERIFICATION_FILE_PATH
-        value: "/app/static/verifications.json"
-      - key: ADMIN_BASE_URL
-        sync: false # This will be automatically set based on the service URL
-      - key: PORT
-        value: "5000"
-      # Add your other environment variables here (API keys, etc.)
-    disk:
-      name: solexa-data
-      mountPath: /app/static
-      sizeGB: 1
-    healthCheckPath: /health
-
-  - type: worker
-    name: solexa-twitter-bot
-    env: docker
-    dockerfilePath: Dockerfile.twitter
-    plan: starter
+    plan: standard
     numInstances: 1
     envVars:
       - key: HEADLESS_BROWSER
@@ -52,35 +23,26 @@ services:
         value: "UTC"
       - key: SKIP_CHMOD
         value: "true"
-      - key: ADMIN_BASE_URL
-        value: "https://solexa-web-interface.onrender.com"
       - key: VERIFICATION_FILE_PATH
         value: "/app/static/verifications.json"
-    disk:
-      name: solexa-shared-data
-      mountPath: /app/static
-      sizeGB: 1
-
-  - type: worker
-    name: solexa-telegram-bot
-    env: docker
-    dockerfilePath: Dockerfile.telegram
-    plan: starter
-    numInstances: 1
-    envVars:
-      - key: DOCKER_ENV
-        value: "true"
-      - key: LOGLEVEL
-        value: "INFO"
-      - key: PYTHONPATH
-        value: "/app"
-      - key: TZ
-        value: "UTC"
       - key: ADMIN_BASE_URL
-        value: "https://solexa-web-interface.onrender.com"
+        sync: false
+      - key: PORT
+        value: "5000"
+      - key: TWITTER_USERNAME
+        sync: false
+      - key: TWITTER_PASSWORD
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TWITTER_EMAIL
+        sync: false
     disk:
-      name: solexa-shared-data
+      name: solexa-data
       mountPath: /app/static
       sizeGB: 1
+    healthCheckPath: /health
   
  
