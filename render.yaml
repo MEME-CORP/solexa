@@ -22,15 +22,14 @@ services:
         value: "/app/static/verifications.json"
       - key: ADMIN_BASE_URL
         sync: false # This will be automatically set based on the service URL
+      - key: PORT
+        value: "5000"
       # Add your other environment variables here (API keys, etc.)
     disk:
       name: solexa-data
       mountPath: /app/static
       sizeGB: 1
     healthCheckPath: /health
-    ports:
-      - port: 5000
-        protocol: TCP
     scaling:
       minInstances: 1
       maxInstances: 1 # Keep to 1 instance since we're running all bots in one container
