@@ -166,6 +166,18 @@
             {% endif %}
         </div>
         
+        <a href="{{ url_for('create_test_verification') }}">
+            <button class="refresh-btn" style="margin-bottom: 10px; background-color: #9d4edd;">
+                Create Test Verification (Debug)
+            </button>
+        </a>
+        
+        <a href="{{ url_for('admin_reset_verifications') }}">
+            <button class="refresh-btn" style="margin-bottom: 10px; background-color: #f14668;">
+                Reset Verification File (Emergency)
+            </button>
+        </a>
+        
         <button class="refresh-btn" onclick="window.location.reload()">Refresh List</button>
     </div>
     

@@ -150,6 +150,16 @@
             </div>
         </div>
         
+        <div class="card">
+            <h2 class="section-title">Debugging Tools</h2>
+            <a href="/static/verifications.json" target="_blank" class="menu-item">
+                View Verifications JSON
+            </a>
+            <a href="/health/notification" target="_blank" class="menu-item">
+                Test Notification System
+            </a>
+        </div>
+        
         <a href="{{ url_for('admin_logout') }}" class="logout-btn">Logout</a>
     </div>
     
@@ -160,6 +170,7 @@
                 fetch('/api/admin/verifications')
                     .then(response => response.json())
                     .then(data => {
+                        console.log("Loaded verifications:", data); // Keep debug output
                         const count = Object.keys(data).length;
                         const badge = document.getElementById('verification-badge');
                         
@@ -167,22 +178,19 @@
                             badge.textContent = count;
                             badge.style.display = 'inline-block';
                             
-                            // Add notification sound and visual indicator
-                            if (badge.getAttribute('data-previous-count') !== count.toString()) {
-                                // Play notification sound if supported
-                                try {
-                                    const audio = new Audio('/static/notification.mp3');
-                                    audio.play();
-                                } catch (e) {
-                                    console.log('Audio notification not supported');
-                                }
-                                
-                                // Flash the menu item
-                                const menuItem = document.getElementById('verification-menu-item');
-                                menuItem.style.animation = 'none';
-                                setTimeout(() => {
-                                    menuItem.style.animation = 'flash 2s infinite';
-                                }, 10);
+                            // Make menu item flash regardless of previous count
+                            const menuItem = document.getElementById('verification-menu-item');
+                            menuItem.style.animation = 'none';
+                            setTimeout(() => {
+                                menuItem.style.animation = 'flash 2s infinite';
+                            }, 10);
+                            
+                            // Play notification sound
+                            try {
+                                const audio = new Audio('/static/notification.mp3');
+                                audio.play().catch(e => console.log('Audio playback error:', e));
+                            } catch (e) {
+                                console.log('Audio notification not supported');
                             }
                             
                             // Update previous count
@@ -201,9 +209,9 @@
                     });
             }
             
-            // Check status periodically
+            // Check status more frequently (every 2 seconds)
             checkVerifications();
-            setInterval(checkVerifications, 5000); // Check every 5 seconds
+            setInterval(checkVerifications, 2000);
         });
     </script>
 </body>

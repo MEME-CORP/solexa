@@ -134,18 +134,31 @@ class Authenticator:
     def _handle_email_verification(self):
         """Handle the email verification screen during login"""
         try:
-            # Check for German title "Gib deine Telefonnummer oder E-Mail-Adresse ein"
-            email_verification_elements = self.driver.find_elements(By.XPATH, 
-                "//*[contains(text(), 'Gib deine Telefonnummer oder E-Mail-Adresse ein')]")
+            # Check for different types of email verification screens
+            email_verification_texts = [
+                "Gib deine Telefonnummer oder E-Mail-Adresse ein",
+                "Enter your phone number or email address",
+                "Hilf uns, deinen Account sicher zu halten",
+                "Verifiziere deine Identität"
+            ]
             
-            if not email_verification_elements:
-                # Also check for English variant
+            screen_detected = False
+            for text in email_verification_texts:
                 email_verification_elements = self.driver.find_elements(By.XPATH, 
-                    "//*[contains(text(), 'Enter your phone number or email address')]")
+                    f"//*[contains(text(), '{text}')]")
+                if email_verification_elements:
+                    screen_detected = True
+                    logger.info(f"Email verification screen detected: '{text}'")
+                    break
             
-            if email_verification_elements:
-                logger.info("Email verification screen detected")
-                
+            # Also check directly for the input field as a fallback
+            if not screen_detected:
+                email_input = self.driver.find_elements(By.XPATH, "//input[@data-testid='ocfEnterTextTextInput']")
+                if email_input:
+                    screen_detected = True
+                    logger.info("Email verification screen detected via input field")
+            
+            if screen_detected:
                 # Look for the input field
                 try:
                     input_field = self.driver.find_element(By.NAME, "text")
@@ -183,7 +196,7 @@ class Authenticator:
                                 input_field.send_keys(Keys.RETURN)
                                 logger.info("Pressed Enter key after entering email")
                                 time.sleep(3)
-            
+        
         except Exception as e:
             logger.warning(f"Error during email verification handling: {e}")
             # Don't raise the exception, just log it and continue the login flow

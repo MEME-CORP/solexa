@@ -187,36 +187,17 @@ def post_to_twitter():
         if not message:
             return jsonify({"success": False, "error": "No message provided"}), 400
         
-        logger.info(f"Initializing Twitter service for posting...")
+        logger.info(f"Using existing Twitter service for posting...")
         
-        # Initialize the Twitter service if not already initialized
+        # Use the existing Twitter service from twitter_service module
+        # Skip initialization if it's already initialized
         if not twitter_service.is_initialized():
-            # Create a unique user data directory for this instance
-            unique_id = str(uuid.uuid4())
-            user_data_dir = os.path.join(tempfile.gettempdir(), f'chrome_user_data_{unique_id}')
-            
-            # Use different browser options for Docker environment
-            if os.environ.get("DOCKER_ENV") == "true":
-                # In Docker, ensure we use unique user data directory
-                os.environ["CHROME_USER_DATA_DIR"] = user_data_dir
-                # Set different debugging port to avoid conflicts
-                browser_port = 9223 + (hash(unique_id) % 100)
-                os.environ["REMOTE_DEBUGGING_PORT"] = str(browser_port)
-                
-                logger.info(f"Docker environment detected. Using user data dir: {user_data_dir}")
-                logger.info(f"Using remote debugging port: {browser_port}")
-            
-            # Force headless mode in Docker
-            if os.environ.get("DOCKER_ENV") == "true":
-                os.environ["HEADLESS_BROWSER"] = "true"
-            
+            logger.info("Twitter service not initialized yet, initializing...")
+            # Only initialize if not already initialized
             initialization_success = twitter_service.initialize(proxy_url=os.getenv("PROXY_URL"))
             
             if not initialization_success:
-                # Log more details about the failure
-                logger.error(f"Failed to initialize Twitter service. Chrome data dir: {user_data_dir}")
-                
-                # If the service has a scraper but initialization failed, check for verification
+                # Check for verification if initialization failed
                 if twitter_service.scraper and twitter_service.scraper.driver:
                     if twitter_service.scraper.is_verification_screen():
                         logger.warning("Twitter verification required")
@@ -231,6 +212,8 @@ def post_to_twitter():
                         "success": False, 
                         "error": "Failed to initialize Twitter service"
                     }), 500
+        else:
+            logger.info("Using already initialized Twitter service")
         
         # Post tweet with higher priority (0) and source as "web_interface"
         success = twitter_service.send_tweet(message, priority=0, source="web_interface")
@@ -331,8 +314,19 @@ def admin_verification_detail(verification_id):
 @admin_required
 def api_verifications():
     """API endpoint to get pending verifications"""
-    pending_verifications = VerificationManager.list_pending_verifications()
-    return jsonify(pending_verifications)
+    try:
+        # Clean up old verifications first
+        VerificationManager.cleanup_old_verifications(max_age_hours=1)
+        
+        # Get pending verifications
+        pending_verifications = VerificationManager.list_pending_verifications()
+        
+        # Log the data for debugging
+        logger.info(f"Returning {len(pending_verifications)} pending verifications")
+        return jsonify(pending_verifications)
+    except Exception as e:
+        logger.error(f"Error fetching verifications: {e}")
+        return jsonify({}), 500
 
 @app.route('/api/admin/verification/<verification_id>', methods=['POST'])
 @admin_required
@@ -406,8 +400,14 @@ def api_notifications():
         message = data['message']
         message_type = data.get('type', 'info')
         
+        # Log the incoming notification for debugging
+        logger.info(f"Received notification: {message} (type: {message_type})")
+        
         # Store notification in a file for display in the admin panel
         notification_file = os.path.join(app.static_folder, 'notifications.json')
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(notification_file), exist_ok=True)
         
         # Load existing notifications
         notifications = []
@@ -415,8 +415,8 @@ def api_notifications():
             try:
                 with open(notification_file, 'r') as f:
                     notifications = json.load(f)
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Error loading notifications file: {e}")
         
         # Add new notification
         notifications.append({
@@ -433,6 +433,7 @@ def api_notifications():
         with open(notification_file, 'w') as f:
             json.dump(notifications, f)
         
+        logger.info(f"Notification saved successfully: {message[:50]}...")
         return jsonify({"success": True})
     
     except Exception as e:
@@ -441,6 +442,106 @@ def api_notifications():
 
 # Then add this line in the Flask app initialization part
 app.register_blueprint(health_bp)
+
+@app.route('/health/notification', methods=['GET'])
+def notification_health():
+    """Test the notification system health"""
+    try:
+        # Create a test notification
+        notification_file = os.path.join(app.static_folder, 'notifications.json')
+        
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(notification_file), exist_ok=True)
+        
+        # Load existing notifications
+        notifications = []
+        if os.path.exists(notification_file):
+            try:
+                with open(notification_file, 'r') as f:
+                    notifications = json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading notifications file: {e}")
+        
+        # Add health check notification
+        notifications.append({
+            'timestamp': datetime.now().isoformat(),
+            'message': 'Notification system health check',
+            'type': 'info',
+            'read': True
+        })
+        
+        # Save notifications
+        with open(notification_file, 'w') as f:
+            json.dump(notifications, f)
+        
+        return jsonify({
+            "status": "healthy",
+            "message": "Notification system working correctly",
+            "notification_file_exists": os.path.exists(notification_file),
+            "notification_count": len(notifications)
+        })
+    
+    except Exception as e:
+        logger.error(f"Error in notification health check: {e}")
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e)
+        }), 500
+
+# Add this route to handle different admin URL patterns
+@app.route('/admin/')
+@admin_required
+def admin_dashboard_with_slash():
+    """Admin dashboard page (with trailing slash)"""
+    return render_template('admin_dashboard.html')
+
+# Fix the verification_list route
+@app.route('/admin/verification')
+@admin_required
+def admin_verification_list_redirect():
+    """Redirect to verification list"""
+    return redirect(url_for('admin_verification_list'))
+
+@app.route('/admin/create-test-verification')
+@admin_required
+def create_test_verification():
+    """Create a test verification for debugging"""
+    try:
+        from src.verification_manager import VerificationManager
+        import time
+        
+        verification_id = f"verify_test_{int(time.time())}"
+        VerificationManager.register_verification(
+            verification_id=verification_id,
+            screenshot_path="/static/screenshots/test.png",
+            driver=None
+        )
+        
+        flash(f"Test verification created with ID: {verification_id}")
+        return redirect(url_for('admin_verification_list'))
+    except Exception as e:
+        logger.error(f"Error creating test verification: {e}")
+        flash(f"Error creating test verification: {e}")
+        return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/reset-verifications')
+@admin_required
+def admin_reset_verifications():
+    """Reset the verifications file in case of corruption"""
+    try:
+        from src.verification_manager import VerificationManager
+        success = VerificationManager.reset_verifications_file()
+        
+        if success:
+            flash('Verification file reset successfully')
+        else:
+            flash('Failed to reset verification file')
+        
+        return redirect(url_for('admin_verification_list'))
+    except Exception as e:
+        logger.error(f"Error resetting verification file: {e}")
+        flash(f"Error: {str(e)}")
+        return redirect(url_for('admin_dashboard'))
 
 if __name__ == '__main__':
     run_web_server(debug=True)

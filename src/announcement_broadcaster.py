@@ -377,7 +377,7 @@ class AnnouncementBroadcaster:
             
             # For Docker environment, use the service name
             if os.environ.get("DOCKER_ENV") == "true":
-                admin_url = "http://web-interface:5000"
+                admin_url = "http://localhost:5000"
                 
             notification_url = f"{admin_url}/api/admin/notifications"
             

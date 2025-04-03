@@ -48,10 +48,7 @@ RUN pip install --no-cache-dir -r requirements.txt gunicorn psutil
 RUN mkdir -p /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller/134 \
     && chmod -R 777 /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
 
-# Copy the rest of the application
-COPY . .
-
-# Create required directories with proper permissions - do this BEFORE switching user
+# Create required directories with proper permissions
 RUN mkdir -p /app/logs \
     && mkdir -p /app/static/screenshots \
     && mkdir -p /tmp/chromedriver \
@@ -59,18 +56,20 @@ RUN mkdir -p /app/logs \
     && chmod -R 777 /app/logs \
     && chmod -R 777 /app/static/screenshots \
     && chmod -R 777 /tmp/chromedriver \
-    && chmod -R 777 /tmp/chrome_user_data \
-    && chmod -R 777 /usr/local/lib/python3.11/site-packages/chromedriver_autoinstaller
+    && chmod -R 777 /tmp/chrome_user_data
 
-# Add the unified entrypoint script
+# Copy the entrypoint script first and make executable
 COPY .docker-unified-entrypoint.sh /app/.docker-unified-entrypoint.sh
 RUN chmod +x /app/.docker-unified-entrypoint.sh
 
-# Use the unified entrypoint script
-ENTRYPOINT ["/app/.docker-unified-entrypoint.sh"]
+# Copy the rest of the application
+COPY . .
 
-# Default to exposing port 5000 for web interface
+# Expose port for web interface
 EXPOSE 5000
 
-# By default run the unified script
+# Use entrypoint script
+ENTRYPOINT ["/app/.docker-unified-entrypoint.sh"]
+
+# Default command
 CMD ["python", "unified_service.py"] 

@@ -163,7 +163,9 @@ class Scraper:
                 "Bestätigungscode",            # German
                 "verification code",           # English
                 "Gib deine Telefonnummer oder E-Mail-Adresse ein",  # German email verification
-                "Enter your phone number or email address"          # English email verification
+                "Enter your phone number or email address",         # English email verification
+                "Hilf uns, deinen Account sicher zu halten",        # German account security
+                "Verifiziere deine Identität"                       # German identity verification
             ]
             
             for text in verification_texts:
@@ -193,6 +195,18 @@ class Scraper:
                 return True
             
             logger.warning("VERIFICATION REQUIRED: Twitter is asking for verification")
+            
+            # Try to clean up old verifications with robust error handling
+            try:
+                from src.verification_manager import VerificationManager
+                try:
+                    VerificationManager.reset_verifications_file()  # Force reset to clear any corrupted state
+                    logger.info("Reset verification file to clean state")
+                except Exception as reset_error:
+                    logger.error(f"Error resetting verification file: {reset_error}")
+            except Exception as clean_error:
+                logger.error(f"Error during verification cleanup: {clean_error}")
+                # Continue anyway
             
             # Check if it's an email verification screen first
             email_verification_texts = [
@@ -281,75 +295,84 @@ class Scraper:
                 driver=self.driver
             )
             
-            # Try to broadcast notification (modified to be more resilient)
-            try:
-                # Get admin URL
-                admin_base_url = os.getenv("ADMIN_BASE_URL", "http://localhost:5000")
-                
-                # For Docker environment, use the service name
-                if os.environ.get("DOCKER_ENV") == "true":
-                    admin_base_url = "http://web-interface:5000"
-                    
-                verification_url = f"{admin_base_url}/admin/verification/{verification_id}"
-                
-                # Direct HTTP call instead of using AnnouncementBroadcaster
-                try:
-                    import requests
-                    from requests.adapters import HTTPAdapter
-                    from urllib3.util.retry import Retry
-                    
-                    # Setup a retry strategy with backoff
-                    retry_strategy = Retry(
-                        total=3,
-                        backoff_factor=1,
-                        status_forcelist=[429, 500, 502, 503, 504],
-                        allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
-                    )
-                    
-                    # Create a session with the retry strategy
-                    session = requests.Session()
-                    adapter = HTTPAdapter(max_retries=retry_strategy)
-                    session.mount("http://", adapter)
-                    session.mount("https://", adapter)
-                    
-                    # Send notification directly to the admin interface
-                    notification_response = session.post(
-                        f"{admin_base_url}/api/admin/notifications",
-                        json={
-                            "message": f"URGENT: Twitter verification code required. Access verification panel at: {verification_url}",
-                            "type": "urgent"
-                        },
-                        timeout=5  # Add timeout to prevent hanging
-                    )
-                    
-                    if notification_response.status_code == 200:
-                        logger.info("Notification sent successfully")
-                    else:
-                        logger.warning(f"Notification API returned status code: {notification_response.status_code}")
-                        
-                except Exception as notification_error:
-                    logger.error(f"Failed to send notification via HTTP: {notification_error}")
-                    # Continue anyway, don't fail the verification process
-                    
-            except Exception as e:
-                logger.error(f"Failed to prepare notification: {e}")
-                # Continue anyway, admin can still check the dashboard
+            # Get admin URL - first try environment variable, then fallback to localhost
+            admin_base_url = os.environ.get("ADMIN_BASE_URL", "http://localhost:5000")
             
-            # Wait for code entry with periodic checks
+            # For Docker environment, always use localhost
+            if os.environ.get("DOCKER_ENV") == "true":
+                admin_base_url = "http://localhost:5000"
+                
+            # Define verification_url here before using it
+            verification_url = f"{admin_base_url}/admin/verification/{verification_id}"
+            
+            # Send multiple notifications to ensure at least one gets through
+            notification_messages = [
+                f"URGENT: Twitter verification code required. Access verification panel at: {verification_url}",
+                f"Twitter verification needed! Go to: {verification_url} to enter the code",
+                f"Verification required: Please check {verification_url} to complete Twitter login"
+            ]
+            
+            # Try multiple notification URLs with multiple messages
+            notification_urls = [
+                "http://localhost:5000/api/admin/notifications",
+                os.environ.get("NOTIFICATION_URL", ""),
+                os.environ.get("INTERNAL_NOTIFICATION_URL", ""),
+                "http://127.0.0.1:5000/api/admin/notifications",
+                "http://web-interface:5000/api/admin/notifications"
+            ]
+            
+            # Filter out empty URLs
+            notification_urls = [url for url in notification_urls if url]
+            
+            # Try to send notifications using all URLs and messages
+            try:
+                import requests
+                success = False
+                
+                for notification_url in notification_urls:
+                    for message in notification_messages:
+                        try:
+                            logger.info(f"Sending notification to: {notification_url}")
+                            response = requests.post(
+                                notification_url,
+                                json={"message": message, "type": "urgent", "verification_id": verification_id},
+                                timeout=5
+                            )
+                            
+                            if response.status_code == 200:
+                                logger.info(f"Notification sent successfully to {notification_url}")
+                                success = True
+                                break
+                        except Exception as e:
+                            logger.warning(f"Failed to send notification to {notification_url}: {e}")
+                    
+                    if success:
+                        break
+                
+                if not success:
+                    logger.error("Failed to send notification to any URL")
+            except Exception as e:
+                logger.error(f"Error in notification process: {e}")
+            
+            # Wait for code entry with periodic checks - IMPROVED ERROR HANDLING
             logger.warning(f"Waiting up to {timeout_minutes} minutes for verification code to be entered")
             max_attempts = timeout_minutes * 6  # Check every 10 seconds
             
             for attempt in range(max_attempts):
-                # Check if verification was completed via admin panel
-                if VerificationManager.is_verification_completed(verification_id):
-                    logger.info("Verification completed successfully via admin panel")
-                    return True
-                
-                # Check if verification screen is still present
-                if not self.is_verification_screen():
-                    logger.info("Verification completed successfully")
-                    VerificationManager.complete_verification(verification_id)
-                    return True
+                # Safely check if verification was completed
+                try:
+                    if VerificationManager.is_verification_completed(verification_id):
+                        logger.info("Verification completed successfully via admin panel")
+                        return True
+                    
+                    # Check if verification screen is still present
+                    if not self.is_verification_screen():
+                        logger.info("Verification completed successfully")
+                        VerificationManager.complete_verification(verification_id)
+                        return True
+                except Exception as check_error:
+                    logger.error(f"Error checking verification status: {check_error}")
+                    # Continue the loop - don't crash
                 
                 # Every minute, remind about the verification
                 if attempt % 6 == 0 and attempt > 0:
@@ -359,12 +382,17 @@ class Scraper:
                 # Sleep for 10 seconds before checking again
                 time.sleep(10)
             
+            # If we got here, timeout occurred
             logger.error(f"Verification timeout after {timeout_minutes} minutes")
-            VerificationManager.cancel_verification(verification_id)
+            try:
+                VerificationManager.cancel_verification(verification_id)
+            except Exception as cancel_error:
+                logger.error(f"Error canceling verification: {cancel_error}")
             return False
             
         except Exception as e:
             logger.error(f"Error handling verification screen: {e}")
+            # Don't crash - return False to indicate failure
             return False
 
     def _capture_verification_screenshot(self):
