@@ -161,6 +161,11 @@ class VerificationManager:
             logger.info("No verification file found, starting with empty verification list")
         except Exception as e:
             logger.error(f"Error loading verifications: {e}")
+        
+    @classmethod
+    def _load_verifications(cls):
+        """Alias for load_verifications for backward compatibility"""
+        return cls.load_verifications()
 
     @classmethod
     def list_pending_verifications(cls):

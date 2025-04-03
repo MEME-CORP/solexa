@@ -13,6 +13,7 @@ import threading
 import json
 import tempfile
 import uuid
+from health_check import health_bp
 
 # Add the project root to Python path to enable imports
 project_root = Path(__file__).parent.parent.parent
@@ -437,6 +438,9 @@ def api_notifications():
     except Exception as e:
         logger.error(f"Error handling notification: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+# Then add this line in the Flask app initialization part
+app.register_blueprint(health_bp)
 
 if __name__ == '__main__':
     run_web_server(debug=True)

@@ -77,6 +77,45 @@ def run_subprocess(cmd, env=None, shell=False):
     
     return process
 
+def send_notification(message, type="info"):
+    """Send notification using the correct host"""
+    try:
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+        
+        # In unified mode, use localhost since everything is in the same container
+        admin_base_url = os.environ.get("ADMIN_BASE_URL", "http://localhost:5000")
+        # Remove any reference to web-interface hostname
+        if "web-interface" in admin_base_url:
+            admin_base_url = "http://localhost:5000"
+        
+        # Setup retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+        )
+        
+        # Create session with retry
+        session = requests.Session()
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        
+        # Send notification
+        response = session.post(
+            f"{admin_base_url}/api/admin/notifications",
+            json={"message": message, "type": type},
+            timeout=5
+        )
+        
+        return response.status_code == 200
+    except Exception as e:
+        logger.error(f"Error sending notification: {e}")
+        return False
+
 def main():
     """Main function to run all services"""
     global service_processes
