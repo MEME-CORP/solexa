@@ -2,8 +2,9 @@ services:
   - type: web
     name: solexa-unified
     env: docker
-    dockerfilePath: Dockerfile.unified
+    dockerfilePath: ./Dockerfile.unified
     plan: standard
+    branch: main
     numInstances: 1
     envVars:
       - key: HEADLESS_BROWSER
