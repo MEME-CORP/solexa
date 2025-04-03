@@ -30,9 +30,6 @@ services:
       mountPath: /app/static
       sizeGB: 1
     healthCheckPath: /health
-    scaling:
-      minInstances: 1
-      maxInstances: 1 # Keep to 1 instance since we're running all bots in one container
 
   - type: worker
     name: solexa-twitter-bot
