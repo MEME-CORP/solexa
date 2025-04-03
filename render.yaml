@@ -52,6 +52,5 @@ services:
       mountPath: /app/static
       sizeGB: 1
     healthCheckPath: /health
-    healthCheckTimeout: 15
   
  
