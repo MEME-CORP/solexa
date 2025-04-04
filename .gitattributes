@@ -1,0 +1,12 @@
+# Force all line endings to be \n
+* text=auto eol=lf
+
+# Denote all files that are binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp3 binary
+*.wav binary
+*.zip binary

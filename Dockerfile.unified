@@ -14,10 +14,11 @@ ENV PYTHONUNBUFFERED=1 \
     HEADLESS_BROWSER=true \
     CHROME_NO_SANDBOX=true \
     SKIP_CHMOD=true \
-    DEBUG_STARTUP=true
+    DEBUG_STARTUP=true \
+    GIT_TERMINAL_PROMPT=0
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     unzip \
@@ -26,6 +27,7 @@ RUN apt-get update && apt-get install -y \
     netcat-traditional \
     procps \
     vim \
+    git-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
@@ -69,7 +71,11 @@ COPY .docker-unified-entrypoint.sh /app/.docker-unified-entrypoint.sh
 RUN chmod +x /app/.docker-unified-entrypoint.sh
 
 # Copy the rest of the application
+# Use --no-git-dir option to exclude Git metadata
 COPY . .
+
+# Remove any .git directory to prevent Git issues
+RUN rm -rf .git
 
 # Create startup verification file
 RUN echo "This file is used to verify that the container has started properly" > /app/static/startup_verification.txt

@@ -2,7 +2,7 @@
 set -e
 
 # Enhanced diagnostic logging
-echo "===== DEPLOYMENT DIAGNOSTICS START ====="
+echo "===== RENDER DEPLOYMENT DIAGNOSTICS START ====="
 echo "Date: $(date)"
 echo "Hostname: $(hostname)"
 echo "Environment: DOCKER_ENV=$DOCKER_ENV, DEBUG_STARTUP=$DEBUG_STARTUP"
@@ -11,6 +11,13 @@ echo "User: $(whoami), ID: $(id)"
 echo "Current directory: $(pwd)"
 echo "Directory listing:"
 ls -la
+echo "Checking for .git directory:"
+if [ -d ".git" ]; then
+    echo "WARNING: .git directory exists and may cause issues"
+    ls -la .git
+else
+    echo "No .git directory found (good)"
+fi
 
 # Add localhost entries
 echo "Adding host entries..."
@@ -57,6 +64,7 @@ import os
 import sys
 
 # Print diagnostic information
+print("===== PYTHON ENVIRONMENT =====")
 print("Python version:", sys.version)
 print("Python path:", sys.path)
 print("Environment variables:", {k: v for k, v in os.environ.items() if not any(secret in k.lower() for secret in ['password', 'token', 'key', 'secret'])})
@@ -114,7 +122,7 @@ done
 echo "Directory structure:"
 find /app -maxdepth 2 -type d | sort
 
-echo "===== DEPLOYMENT DIAGNOSTICS END ====="
+echo "===== RENDER DEPLOYMENT DIAGNOSTICS END ====="
 echo "Unified service ready to start with command: $@"
 
 # Execute the provided command
