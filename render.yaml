@@ -5,19 +5,13 @@ services:
     dockerfilePath: Dockerfile.unified
     plan: standard
     numInstances: 1
-    buildFilter:
-      paths:
-      - "**/*.py"
-      - "**/*.sh"
-      - "requirements.txt"
-      - "Dockerfile.unified"
     envVars:
       - key: HEADLESS_BROWSER
         value: "true"
       - key: DOCKER_ENV
         value: "true"
       - key: LOGLEVEL
-        value: "INFO"
+        value: "DEBUG"
       - key: PYTHONPATH
         value: "/app"
       - key: TZ
@@ -50,6 +44,8 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: DEBUG_STARTUP
+        value: "true"
     disk:
       name: solexa-data
       mountPath: /app/static

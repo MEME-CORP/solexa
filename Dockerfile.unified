@@ -7,13 +7,14 @@ ENV PYTHONUNBUFFERED=1 \
     CHROMEDRIVER_DIR=/usr/local/share/chrome_driver \
     CHROMEDRIVER_PATH=/usr/local/share/chrome_driver/chromedriver \
     DOCKER_ENV=true \
-    LOGLEVEL=INFO \
+    LOGLEVEL=DEBUG \
     URLLIB3_CONNECTIONPOOL_SIZE=20 \
     PYTHONWARNINGS="ignore:Connection pool is full" \
     PYTHONPATH=/app \
     HEADLESS_BROWSER=true \
     CHROME_NO_SANDBOX=true \
-    SKIP_CHMOD=true
+    SKIP_CHMOD=true \
+    DEBUG_STARTUP=true
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -23,6 +24,8 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     curl \
     netcat-traditional \
+    procps \
+    vim \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
@@ -37,6 +40,9 @@ RUN mkdir -p $CHROMEDRIVER_DIR
 
 # Set working directory
 WORKDIR /app
+
+# Create diagnostic script for troubleshooting
+RUN echo '#!/bin/bash\necho "===SYSTEM DIAGNOSTICS==="\necho "Date: $(date)"\necho "Hostname: $(hostname)"\necho "Environment: $DOCKER_ENV"\necho "User: $(whoami)"\nps aux\necho "===DIRECTORY LISTING==="\nls -la /app\necho "===NETWORK INFO==="\nip addr\nnetstat -tuln\necho "===RENDER DIAGNOSTICS==="\nfind /app -name "*.py" | head -10' > /app/diagnostics.sh && chmod +x /app/diagnostics.sh
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
@@ -65,11 +71,14 @@ RUN chmod +x /app/.docker-unified-entrypoint.sh
 # Copy the rest of the application
 COPY . .
 
+# Create startup verification file
+RUN echo "This file is used to verify that the container has started properly" > /app/static/startup_verification.txt
+
 # Expose port for web interface
 EXPOSE 5000
 
 # Use entrypoint script
 ENTRYPOINT ["/app/.docker-unified-entrypoint.sh"]
 
-# Default command
-CMD ["python", "unified_service.py"] 
+# Default command - with error handling wrapper
+CMD ["sh", "-c", "python unified_service.py 2>&1 | tee /app/logs/startup.log || (cat /app/logs/startup.log && exit 1)"] 
