@@ -12,38 +12,6 @@ services:
         value: "true"
       - key: LOGLEVEL
         value: "DEBUG"
-      - key: PYTHONPATH
-        value: "/app"
-      - key: TZ
-        value: "UTC"
-      - key: SKIP_CHMOD
-        value: "true"
-      - key: VERIFICATION_FILE_PATH
-        value: "/app/static/verifications.json"
-      - key: ADMIN_BASE_URL
-        value: "${RENDER_EXTERNAL_URL}"
-      - key: NOTIFICATION_URL
-        value: "${RENDER_EXTERNAL_URL}/api/admin/notifications"
-      - key: INTERNAL_NOTIFICATION_URL
-        value: "http://localhost:5000/api/admin/notifications"
-      - key: PORT
-        value: "5000"
-      - key: WEB_INTERFACE_URL
-        value: "${RENDER_EXTERNAL_URL}"
-      - key: WEB_INTERFACE_HOST
-        value: "localhost"
-      - key: WEB_INTERFACE_PORT
-        value: "5000"
-      - key: TWITTER_USERNAME
-        sync: false
-      - key: TWITTER_PASSWORD
-        sync: false
-      - key: TWITTER_EMAIL
-        sync: false
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
       - key: DEBUG_STARTUP
         value: "true"
     disk:
